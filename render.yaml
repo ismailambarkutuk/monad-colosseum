@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: monad-colosseum-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.12.0
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PRIVATE_KEY
+        sync: false
+      - key: MONAD_RPC
+        value: https://testnet-rpc.monad.xyz
+      - key: FRONTEND_ORIGIN
+        value: https://monad-collosseum-frontend.vercel.app
+      - key: PORT
+        value: 10000

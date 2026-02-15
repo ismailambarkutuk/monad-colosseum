@@ -16,7 +16,7 @@ class SpectateWsClient {
         this.maxReconnects = 5;
     }
 
-    connect(url = 'ws://localhost:3001/ws') {
+    connect(url = import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws') {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
         this.ws = new WebSocket(url);

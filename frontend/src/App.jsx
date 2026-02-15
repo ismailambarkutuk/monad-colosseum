@@ -11,8 +11,9 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { SkeletonArenaCard, SkeletonList } from './components/Skeleton'
 import Spectate from './Spectate'
 import MyAgents from './pages/MyAgents'
-import DemoBattle from './pages/DemoBattle'
+// import DemoBattle from './pages/DemoBattle'
 import ApiDocs from './pages/ApiDocs'
+
 import { CONTRACTS, AGENT_REGISTRY_ABI } from './config/contracts'
 
 // Contract Config
@@ -46,16 +47,16 @@ export default function App() {
             <ErrorBoundary>
                 <main style={{ padding: '1rem' }}>
                     {page === 'home' && <HomePage setPage={setPage} />}
-                    {page === 'demo' && <DemoBattle />}
+                    {page === 'demo' && <div className="mc-card" style={{ padding: '2rem', textAlign: 'center' }}><h2>Demo Battle</h2><p>Coming soon...</p></div>}
                     {page === 'create' && <CreateAgentPage />}
                     {page === 'arenas' && <ArenasPage onNavigate={setPage} />}
                     {page === 'leaderboard' && <LeaderboardPage />}
                     {page === 'myagents' && <MyAgents onNavigate={setPage} />}
                     {page === 'spectate' && <Spectate />}
                     {page === 'docs' && <ApiDocs />}
-                </main>
-            </ErrorBoundary>
-        </div>
+                </main >
+            </ErrorBoundary >
+        </div >
     )
 }
 
