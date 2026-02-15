@@ -18,11 +18,11 @@ const ARENA_DEFAULTS = {
 
 // ─── Tier Definitions (matches frontend & smart contract) ──────────────
 const TIER_CONFIG = {
-  bronze:   { name: '🥉 Bronze Arena',    entryFee: 0.1,  maxAgents: 8,  minAgents: 2, color: '#CD7F32' },
-  silver:   { name: '🥈 Silver Arena',    entryFee: 0.3,  maxAgents: 6,  minAgents: 2, color: '#C0C0C0' },
-  gold:     { name: '🥇 Gold Arena',       entryFee: 0.5,  maxAgents: 4,  minAgents: 2, color: '#FFD700' },
-  platinum: { name: '💎 Platinum Arena',   entryFee: 1,    maxAgents: 4,  minAgents: 2, color: '#E5E4E2' },
-  diamond:  { name: '💠 Diamond Arena',    entryFee: 2,    maxAgents: 2,  minAgents: 2, color: '#B9F2FF' },
+  bronze:   { name: '🥉 Bronze Arena',    entryFee: 0.05, maxAgents: 8,  minAgents: 2, color: '#CD7F32' },
+  silver:   { name: '🥈 Silver Arena',    entryFee: 0.1,  maxAgents: 6,  minAgents: 2, color: '#C0C0C0' },
+  gold:     { name: '🥇 Gold Arena',       entryFee: 0.2,  maxAgents: 4,  minAgents: 2, color: '#FFD700' },
+  platinum: { name: '💎 Platinum Arena',   entryFee: 0.5,  maxAgents: 4,  minAgents: 2, color: '#E5E4E2' },
+  diamond:  { name: '💠 Diamond Arena',    entryFee: 1,    maxAgents: 2,  minAgents: 2, color: '#B9F2FF' },
 };
 
 class ArenaManager extends EventEmitter {
@@ -225,14 +225,30 @@ class ArenaManager extends EventEmitter {
 
   async _runMatch(match) {
     let turnCount = 0;
+    // Gemini free tier: 15 req/min → 4s between turns; otherwise 2s
+    const interTurnDelay = this.engine.geminiModel ? 4000 : 2000;
     while (match.status === 'active' && turnCount < this.config.MAX_TURNS) {
       const turnResult = await this.engine.executeTurn(match);
       this.emit('turnCompleted', {
         matchId: match.matchId,
         turn: turnResult.turn,
         events: turnResult.events,
+        agents: match.agents.map(a => ({
+          id: a.id,
+          name: a.name,
+          hp: a.hp,
+          maxHp: a.maxHp || 100,
+          alive: a.alive,
+          turnsAlive: a.turnsAlive || 0,
+          lastAction: turnResult.decisions?.[a.id]?.action || null,
+        })),
       });
       turnCount++;
+
+      // Rate limit: wait between turns to avoid API throttling
+      if (match.status === 'active') {
+        await new Promise(r => setTimeout(r, interTurnDelay));
+      }
     }
 
     // Force-end if max turns reached
@@ -259,9 +275,11 @@ class ArenaManager extends EventEmitter {
    * Run a best-of-3 RPS match to completion.
    */
   async _runRpsMatch(match) {
-    const maxRounds = match.bestOf + 2; // allow extra rounds for draws
+    const maxRounds = 7; // best-of-3 but allow up to 7 rounds for draws
     let roundCount = 0;
 
+    // Gemini free tier: 15 req/min → 4s between rounds; otherwise 2s
+    const interRoundDelay = this.engine.geminiModel ? 4000 : 2000;
     while (match.status === 'active' && roundCount < maxRounds) {
       const roundResult = await this.engine.executeRpsRound(match);
       this.emit('turnCompleted', {
@@ -269,30 +287,73 @@ class ArenaManager extends EventEmitter {
         turn: roundResult.round,
         events: roundResult.events,
         gameType: 'rps',
+        agents: match.agents.map(a => ({
+          id: a.id,
+          name: a.name,
+          score: a.score || 0,
+          alive: a.alive !== false,
+        })),
       });
       roundCount++;
+
+      // Rate limit: wait between rounds to avoid API throttling
+      if (match.status === 'active') {
+        await new Promise(r => setTimeout(r, interRoundDelay));
+      }
     }
 
-    // Determine winner if still active after max rounds (shouldn't happen normally)
+    // If still active after max rounds → coin flip tiebreaker
     if (match.status === 'active') {
       match.status = 'completed';
       match.endedAt = new Date();
       const [a, b] = match.agents;
-      const winner = a.roundsWon > b.roundsWon ? a : (b.roundsWon > a.roundsWon ? b : null);
-      if (winner) {
-        this.engine.distributePrize(match, winner);
+      let winner;
+      if (a.roundsWon > b.roundsWon) {
+        winner = a;
+      } else if (b.roundsWon > a.roundsWon) {
+        winner = b;
+      } else {
+        // True tie after 7 rounds — coin flip
+        winner = Math.random() < 0.5 ? a : b;
+        console.log(`[RPS] ⚡ Coin flip tiebreaker after ${roundCount} rounds: ${winner.name || winner.id} wins!`);
+        match.history.push({
+          round: match.currentRound,
+          moves: {},
+          winner: winner.id,
+          isDraw: false,
+          isCoinFlip: true,
+          scores: { [a.id]: a.roundsWon, [b.id]: b.roundsWon },
+          events: [{ type: 'rps_coin_flip', winner: winner.id }],
+        });
       }
+      const loser = winner === a ? b : a;
+      this.engine.distributePrize(match, winner);
+
+      // Emit matchEnded so ELO/leaderboard gets updated
+      this.engine.emit('matchEnded', {
+        matchId: match.matchId,
+        winner,
+        loser,
+        gameType: 'rps',
+        turn: match.currentRound,
+      });
     }
 
     const [a, b] = match.agents;
     const winner = a.roundsWon > b.roundsWon ? a : (b.roundsWon > a.roundsWon ? b : null);
+    // Use the actual match winner (could be coin flip)
+    const finalWinner = match.agents.find(ag => {
+      const hist = match.history;
+      const lastEvent = hist[hist.length - 1];
+      return lastEvent?.winner === ag.id;
+    }) || winner;
 
     return {
       matchId: match.matchId,
       gameType: 'rps',
       totalRounds: match.history.length,
       finalScore: { [a.id]: a.roundsWon, [b.id]: b.roundsWon },
-      winner: winner || null,
+      winner: finalWinner || winner || null,
       status: match.status,
     };
   }

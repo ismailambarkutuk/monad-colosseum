@@ -104,7 +104,11 @@ if (platformSigner) {
 }
 
 // ─── Service Instances ───────────────────────────────────────────────────────
-const gameEngine = new GameEngine({ anthropicApiKey: process.env.ANTHROPIC_API_KEY });
+const gameEngine = new GameEngine({
+    geminiApiKey: process.env.GEMINI_API_KEY,
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    groqApiKey: process.env.GROQ_API_KEY,
+});
 const arenaManager = new ArenaManager(gameEngine);
 
 // ─── In-memory Storage ───────────────────────────────────────────────────────
@@ -129,7 +133,11 @@ const PLATFORM_FEE_ADDRESS = platformSigner ? platformSigner.address : null;
  */
 async function collectEntryFeeOnchain(agent, entryFeeMON) {
     if (!provider || !platformSigner || !agent.agentPrivateKey) {
-        console.warn(`[OnChain] ⚠️ Skipping entry fee tx — missing provider/signer/key for ${agent.name || agent.id}`);
+        const missing = [];
+        if (!provider) missing.push('provider');
+        if (!platformSigner) missing.push('platformSigner');
+        if (!agent.agentPrivateKey) missing.push('agentPrivateKey');
+        console.warn(`[OnChain] ⚠️ Skipping entry fee tx for ${agent.name || agent.id} — missing: ${missing.join(', ')}`);
         return null;
     }
     try {
@@ -2326,14 +2334,14 @@ server.listen(PORT, async () => {
     // ── Clean up stale agent states ─────────────────────────────
     let staleFixed = 0;
     for (const agent of Object.values(agents)) {
-        if (agent.status === 'fighting' && !arenaManager.isAgentInArena(agent.id)) {
-            console.log(`[Startup] 🧹 Stale state: ${agent.name} (${agent.id}) was 'fighting' but not in any arena → searching`);
-            agent.status = 'searching';
-            staleFixed++;
-        }
-        if (agent.status === 'won' || agent.status === 'lost') {
-            agent.status = 'searching';
-            staleFixed++;
+        const staleStatuses = ['fighting', 'won', 'lost'];
+        if (staleStatuses.includes(agent.status)) {
+            const wasInArena = arenaManager.isAgentInArena(agent.id);
+            if (!wasInArena) {
+                console.log(`[Startup] 🧹 Stale state: ${agent.name} (${agent.id}) was '${agent.status}' → searching`);
+                agent.status = 'searching';
+                staleFixed++;
+            }
         }
     }
     if (staleFixed > 0) {

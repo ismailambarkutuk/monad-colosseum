@@ -100,28 +100,6 @@ const BUFF_TYPES = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DEMO MODE DATA
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const DEMO_AGENTS = [
-    { address: '0xDEAD...BEEF', health: 850, maxHealth: 1000, armor: 50, attack: 75, speed: 60, charisma: 40, reputation: 72, isOutlaw: false, isAlive: true },
-    { address: '0xCAFE...BABE', health: 620, maxHealth: 1000, armor: 80, attack: 45, speed: 40, charisma: 90, reputation: 85, isOutlaw: false, isAlive: true },
-    { address: '0x1337...H4X0', health: 0, maxHealth: 1000, armor: 20, attack: 120, speed: 95, charisma: 15, reputation: 18, isOutlaw: true, isAlive: false },
-    { address: '0xABCD...1234', health: 450, maxHealth: 1000, armor: 60, attack: 55, speed: 70, charisma: 65, reputation: 55, isOutlaw: false, isAlive: true },
-];
-
-const DEMO_EVENTS = [
-    { type: 'BRIBE_OFFERED', primaryActor: '0xCAFE...BABE', secondaryActor: '0xDEAD...BEEF', value: '0.5', description: '0xCAFE offered 0.5 MONAD bribe to 0xDEAD', timestamp: Date.now() - 45000, roundId: 47 },
-    { type: 'BRIBE_ACCEPTED', primaryActor: '0xDEAD...BEEF', secondaryActor: '0xCAFE...BABE', value: '0.5', description: '0xDEAD accepted bribe from 0xCAFE', timestamp: Date.now() - 40000, roundId: 47 },
-    { type: 'BETRAYAL', primaryActor: '0x1337...H4X0', secondaryActor: '0xABCD...1234', value: '0.3', description: '🗡️ 0x1337 BETRAYED 0xABCD! Trust broken!', timestamp: Date.now() - 35000, roundId: 47 },
-    { type: 'OUTLAW_DECLARED', primaryActor: '0x1337...H4X0', secondaryActor: '', value: '1.0', description: '🤠 0x1337 is now an OUTLAW! Bounty: 1.0 MONAD', timestamp: Date.now() - 30000, roundId: 47 },
-    { type: 'ATTACK', primaryActor: '0xDEAD...BEEF', secondaryActor: '0x1337...H4X0', value: '150', description: '0xDEAD attacked 0x1337 for 150 damage', timestamp: Date.now() - 20000, roundId: 47 },
-    { type: 'BUFF_RECEIVED', primaryActor: '0xCAFE...BABE', secondaryActor: '0xViewer', value: '0.1', description: '✨ 0xCAFE received +100 HP from viewer!', timestamp: Date.now() - 15000, roundId: 47 },
-    { type: 'BOUNTY_CLAIMED', primaryActor: '0xABCD...1234', secondaryActor: '0x1337...H4X0', value: '1.0', description: '💀 0xABCD claimed bounty on outlaw 0x1337!', timestamp: Date.now() - 10000, roundId: 47 },
-    { type: 'AGENT_DEATH', primaryActor: '0x1337...H4X0', secondaryActor: '0xABCD...1234', value: '0', description: '☠️ 0x1337 has been eliminated by 0xABCD', timestamp: Date.now() - 5000, roundId: 47 },
-];
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -204,6 +182,29 @@ export function Spectate() {
         const handleLiveEvent = (msg) => {
             switch (msg.type) {
                 case 'match:turn': {
+                    // Update agent states from live data
+                    if (msg.agents && Array.isArray(msg.agents)) {
+                        setAgents(msg.agents.map(a => ({
+                            address: a.id,
+                            id: a.id,
+                            name: a.name || a.id,
+                            health: a.hp ?? 100,
+                            maxHealth: a.maxHp || 100,
+                            armor: 50,
+                            attack: 50,
+                            speed: 50,
+                            charisma: 50,
+                            reputation: 50,
+                            isOutlaw: false,
+                            isAlive: a.alive !== false,
+                            lastAction: a.lastAction || null,
+                        })));
+                        setCurrentRound(prev => ({
+                            ...prev,
+                            id: msg.turn || prev.id,
+                            status: 'IN_PROGRESS',
+                        }));
+                    }
                     // Map turn events to combat log entries
                     if (msg.events) {
                         const newEntries = msg.events
@@ -259,6 +260,11 @@ export function Spectate() {
                     break;
                 }
                 case 'match:completed': {
+                    setCurrentRound(prev => ({
+                        ...prev,
+                        status: 'COMPLETED',
+                        winner: msg.result?.winner?.id || '',
+                    }));
                     setCombatLog(prev => [{
                         type: 'CHAMPION_CROWNED',
                         primaryActor: msg.result?.winner?.id || '',

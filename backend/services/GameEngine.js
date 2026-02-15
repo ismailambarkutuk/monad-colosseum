@@ -4,12 +4,16 @@
  * Manages match lifecycle, turn execution, combat resolution,
  * alliance mechanics, and prize distribution.
  *
- * Each agent makes REAL AI decisions via Claude API every turn.
- * Fallback to strategies.js if Claude is unavailable or times out.
+ * Each agent makes REAL AI decisions via Gemini 2.0 Flash (primary) every turn.
+ * Fallback chain: Gemini → Groq → Claude → strategies.js.
+ * Agent creation also uses Claude API (in server.js).
  */
 
 const crypto = require('crypto');
 const EventEmitter = require('events');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
+const Anthropic = require('@anthropic-ai/sdk');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const DEFAULTS = {
@@ -19,7 +23,7 @@ const DEFAULTS = {
   DEFENDED_DAMAGE: 10,
   HP_RECOVERY: 5,
   DECISION_TIMEOUT: 30000, // 30 seconds
-  AI_DECISION_TIMEOUT: 3000, // 3s for Claude API call
+  AI_DECISION_TIMEOUT: 5000, // 5s for Groq API call
   MIN_AGENTS: 2,
   MAX_AGENTS: 16,
 };
@@ -44,6 +48,30 @@ class GameEngine extends EventEmitter {
     this.matches = new Map();          // matchId → match
     this.pendingProposals = new Map();  // matchId → [proposal, …]
     this.anthropicApiKey = config.anthropicApiKey || process.env.ANTHROPIC_API_KEY || null;
+
+    // Gemini AI for agent decisions (primary, free & fast)
+    const geminiKey = config.geminiApiKey || process.env.GEMINI_API_KEY || null;
+    if (geminiKey) {
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      this.geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      console.log('[GameEngine] ✅ Gemini AI enabled (gemini-2.0-flash) — PRIMARY');
+    } else {
+      this.geminiModel = null;
+    }
+
+    // Groq SDK for agent decisions (fallback #1)
+    const groqKey = config.groqApiKey || process.env.GROQ_API_KEY || null;
+    this.groq = groqKey ? new Groq({ apiKey: groqKey }) : null;
+    if (this.groq) console.log('[GameEngine] ✅ Groq AI enabled (llama-3.3-70b-versatile) — fallback #1');
+
+    // Anthropic Claude SDK (fallback #2)
+    this.anthropic = this.anthropicApiKey ? new Anthropic({ apiKey: this.anthropicApiKey }) : null;
+    if (this.anthropic) console.log('[GameEngine] ✅ Claude AI enabled (claude-sonnet-4-20250514) — fallback #2');
+
+    // Rate-limit cooldowns (5 min) — skip API calls if recently rate-limited
+    this._geminiCooldownUntil = 0;
+    this._groqCooldownUntil = 0;
+    this._COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -272,8 +300,11 @@ class GameEngine extends EventEmitter {
   async collectDecisions(match) {
     const decisions = {};
     const aliveAgents = match.agents.filter((a) => a.alive);
+    const delay = this.geminiModel ? 2000 : 2000; // rate-limit delay between agent calls
 
-    const promises = aliveAgents.map(async (agent) => {
+    // Sequential calls to avoid rate limiting (NOT parallel)
+    for (let i = 0; i < aliveAgents.length; i++) {
+      const agent = aliveAgents[i];
       try {
         const decision = await this._getAgentDecision(match, agent);
         decisions[agent.id] = decision;
@@ -283,9 +314,13 @@ class GameEngine extends EventEmitter {
         decisions[agent.id] = { action: 'defend', reasoning: 'Fallback: decision timeout' };
         agent.lastAction = { action: 'defend' };
       }
-    });
 
-    await Promise.all(promises);
+      // Rate limit: wait between agent calls (skip after last agent)
+      if (i < aliveAgents.length - 1) {
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+
     return decisions;
   }
 
@@ -545,12 +580,11 @@ class GameEngine extends EventEmitter {
   async _getAgentDecision(match, agent) {
     const gameState = this.buildGameState(match, agent);
 
-    // ── Try Claude AI decision first ────────────────────────────────────
-    if (this.anthropicApiKey) {
+    // ── Try Gemini AI decision first (PRIMARY) ─────────────────────────
+    if (this.geminiModel && Date.now() >= this._geminiCooldownUntil) {
       try {
-        const aiDecision = await this._getClaudeDecision(agent, gameState, match);
+        const aiDecision = await this._getGeminiDecision(agent, gameState, match);
         if (aiDecision && aiDecision.action) {
-          // Emit reasoning for spectate broadcast
           this.emit('agentReasoning', {
             matchId: match.matchId,
             agentId: agent.id,
@@ -558,11 +592,68 @@ class GameEngine extends EventEmitter {
             reasoning: aiDecision.reasoning || '',
             action: aiDecision.action,
             turn: match.currentTurn,
+            provider: 'gemini',
           });
           return aiDecision;
         }
       } catch (err) {
-        console.warn(`[AI] Claude decision failed for ${agent.name}: ${err.message} — using fallback`);
+        const msg = err.message || '';
+        if (msg.includes('429') || msg.includes('rate') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+          this._geminiCooldownUntil = Date.now() + this._COOLDOWN_MS;
+          console.warn(`[AI] Gemini rate-limited → cooldown 5min (until ${new Date(this._geminiCooldownUntil).toLocaleTimeString()})`);
+        }
+        console.warn(`[AI] Gemini decision failed for ${agent.name}: ${msg} — trying Groq...`);
+      }
+    } else if (this.geminiModel && Date.now() < this._geminiCooldownUntil) {
+      // Skip — Gemini is in cooldown
+    }
+
+    // ── Try Groq AI as fallback #1 ──────────────────────────────────────
+    if (this.groq && Date.now() >= this._groqCooldownUntil) {
+      try {
+        const aiDecision = await this._getGroqDecision(agent, gameState, match);
+        if (aiDecision && aiDecision.action) {
+          this.emit('agentReasoning', {
+            matchId: match.matchId,
+            agentId: agent.id,
+            agentName: agent.name,
+            reasoning: aiDecision.reasoning || '',
+            action: aiDecision.action,
+            turn: match.currentTurn,
+            provider: 'groq',
+          });
+          return aiDecision;
+        }
+      } catch (err) {
+        const msg = err.message || '';
+        if (msg.includes('429') || msg.includes('rate_limit') || msg.includes('Rate limit')) {
+          this._groqCooldownUntil = Date.now() + this._COOLDOWN_MS;
+          console.warn(`[AI] Groq rate-limited → cooldown 5min (until ${new Date(this._groqCooldownUntil).toLocaleTimeString()})`);
+        }
+        console.warn(`[AI] Groq decision failed for ${agent.name}: ${msg} — trying Claude...`);
+      }
+    } else if (this.groq && Date.now() < this._groqCooldownUntil) {
+      // Skip — Groq is in cooldown
+    }
+
+    // ── Try Claude AI as fallback #2 ────────────────────────────────────
+    if (this.anthropic) {
+      try {
+        const aiDecision = await this._getClaudeDecision(agent, gameState, match);
+        if (aiDecision && aiDecision.action) {
+          this.emit('agentReasoning', {
+            matchId: match.matchId,
+            agentId: agent.id,
+            agentName: agent.name,
+            reasoning: aiDecision.reasoning || '',
+            action: aiDecision.action,
+            turn: match.currentTurn,
+            provider: 'claude',
+          });
+          return aiDecision;
+        }
+      } catch (err) {
+        console.warn(`[AI] Claude decision failed for ${agent.name}: ${err.message} — using strategy fallback`);
       }
     }
 
@@ -625,91 +716,124 @@ class GameEngine extends EventEmitter {
   }
 
   /**
-   * Call Claude API for a real AI battle decision.
-   * 3s timeout, returns parsed JSON decision.
+   * Call Gemini 2.0 Flash for a real AI battle decision.
+   * 5s timeout, returns parsed JSON decision. Free & fast.
    * @private
    */
-  async _getClaudeDecision(agent, gameState, match) {
+  async _getGeminiDecision(agent, gameState, match) {
     const params = agent.strategyParams || {};
     const traits = (agent.traits || []).join(', ') || 'balanced';
     const personality = agent.strategyDescription || traits;
-
-    const systemPrompt = `You are an autonomous AI gladiator agent in a battle arena on the Monad blockchain. You make genuine, independent combat decisions every turn.
-
-Your identity:
-- Name: ${agent.name}
-- Personality: ${personality}
-- Traits: ${traits}
-
-Your behavioral parameters (0-100 scale):
-- Aggressiveness: ${params.aggressiveness ?? 50} (0=always defend, 100=always attack)
-- Risk Tolerance: ${params.riskTolerance ?? 50} (willingness to take risks)
-- Alliance Tendency: ${params.allianceTendency ?? 50} (0=lone wolf, 100=always ally)
-- Betrayal Chance: ${params.betrayalChance ?? 20} (0=loyal, 100=always betray)
-- Bribery Policy: ${params.briberyPolicy || 'conditional'}
-
-Combat rules:
-- ATTACK deals ~20 damage (10 if target is defending)
-- DEFEND reduces incoming damage and recovers +5 HP
-- You can propose/accept alliances for shared prize pools
-- Betrayal deals full 20 damage ignoring defense, but breaks your alliance
-- Last gladiator standing wins the entire prize pool
-- HP starts at 100, max 105
-
-You must stay in character and make decisions consistent with your personality.
-Respond with ONLY a valid JSON object, no markdown, no explanation outside the JSON.`;
 
     const opponents = gameState.opponents.filter(o => o.alive);
     const allianceInfo = gameState.alliances.length > 0
       ? `Active alliances: ${JSON.stringify(gameState.alliances)}`
       : 'No active alliances';
 
-    const userPrompt = `Turn ${gameState.currentTurn}. Choose your action NOW.
+    const prompt = `You are ${agent.name}, an autonomous AI gladiator in a battle arena on the Monad blockchain.
+Personality: ${personality}. Traits: ${traits}.
+Parameters: aggressiveness=${params.aggressiveness ?? 50}, riskTolerance=${params.riskTolerance ?? 50}, allianceTendency=${params.allianceTendency ?? 50}, betrayalChance=${params.betrayalChance ?? 20}, briberyPolicy=${params.briberyPolicy || 'conditional'}.
 
-Your status: HP=${gameState.you.hp}/105, alive opponents: ${opponents.length}
+Combat rules:
+- ATTACK deals ~20 damage (10 if target is defending)
+- DEFEND reduces incoming damage and recovers +5 HP
+- Betrayal deals full 20 damage ignoring defense, but breaks alliance
+- Last gladiator standing wins the entire prize pool
+- HP starts at 100, max 105
+
+Turn ${gameState.currentTurn}. Your HP=${gameState.you.hp}/105, alive opponents: ${opponents.length}
 Opponents: ${opponents.map(o => `${o.id}(HP:${o.hp}, last:${o.lastAction?.action || 'none'})`).join(', ')}
 ${allianceInfo}
-Prize pool: ${match.prizePool} MON
-Your last action: ${gameState.you.lastAction?.action || 'none'}
+Prize pool: ${match.prizePool} MON | Your last action: ${gameState.you.lastAction?.action || 'none'}
 
-Available actions:
-- {"action": "attack", "target": "<opponentId>", "reasoning": "..."}
-- {"action": "defend", "reasoning": "..."}
-- {"action": "propose_alliance", "target": "<opponentId>", "terms": {"prizeShare": 50}, "reasoning": "..."}
-- {"action": "accept_alliance", "proposer": "<agentId>", "reasoning": "..."}
-- {"action": "betray_alliance", "allianceId": "<id>", "attackTarget": "<agentId>", "reasoning": "..."}
-- {"action": "bribe", "target": "<opponentId>", "amount": <number>, "reasoning": "..."}
+Choose ONE action:
+- {"action":"attack","target":"<id>","reasoning":"brief why"}
+- {"action":"defend","reasoning":"brief why"}
+- {"action":"propose_alliance","target":"<id>","terms":{"prizeShare":50},"reasoning":"..."}
+- {"action":"accept_alliance","proposer":"<id>","reasoning":"..."}
+- {"action":"betray_alliance","allianceId":"<id>","attackTarget":"<id>","reasoning":"..."}
+- {"action":"bribe","target":"<id>","amount":<number>,"reasoning":"..."}
 
-Respond with a single JSON object.`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.config.AI_DECISION_TIMEOUT);
+Respond ONLY with valid JSON, no extra text.`;
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': this.anthropicApiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 200,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userPrompt }],
+      const result = await Promise.race([
+        this.geminiModel.generateContent(prompt),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout 5s')), this.config.AI_DECISION_TIMEOUT)),
+      ]);
+
+      const rawText = result.response.text();
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : clean);
+
+      console.log(`[AI-Gemini] ${agent.name} (turn ${match.currentTurn}): ${parsed.action}${parsed.target ? ' → ' + parsed.target : ''} | "${(parsed.reasoning || '').slice(0, 80)}"`);
+
+      return parsed;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  /**
+   * Call Groq API (llama-3.3-70b-versatile) for a real AI battle decision.
+   * 5s timeout, returns parsed JSON decision. Free API.
+   * @private
+   */
+  async _getGroqDecision(agent, gameState, match) {
+    const params = agent.strategyParams || {};
+    const traits = (agent.traits || []).join(', ') || 'balanced';
+    const personality = agent.strategyDescription || traits;
+
+    const systemPrompt = `You are ${agent.name}, an autonomous AI gladiator in a battle arena on the Monad blockchain.
+Personality: ${personality}
+Traits: ${traits}
+Parameters: aggressiveness=${params.aggressiveness ?? 50}, riskTolerance=${params.riskTolerance ?? 50}, allianceTendency=${params.allianceTendency ?? 50}, betrayalChance=${params.betrayalChance ?? 20}, briberyPolicy=${params.briberyPolicy || 'conditional'}.
+
+Combat rules:
+- ATTACK deals ~20 damage (10 if target is defending)
+- DEFEND reduces incoming damage and recovers +5 HP
+- Betrayal deals full 20 damage ignoring defense, but breaks alliance
+- Last gladiator standing wins the entire prize pool
+- HP starts at 100, max 105
+
+Stay in character. Respond ONLY with valid JSON, no extra text.`;
+
+    const opponents = gameState.opponents.filter(o => o.alive);
+    const allianceInfo = gameState.alliances.length > 0
+      ? `Active alliances: ${JSON.stringify(gameState.alliances)}`
+      : 'No active alliances';
+
+    const userPrompt = `Turn ${gameState.currentTurn}. Your HP=${gameState.you.hp}/105, alive opponents: ${opponents.length}
+Opponents: ${opponents.map(o => `${o.id}(HP:${o.hp}, last:${o.lastAction?.action || 'none'})`).join(', ')}
+${allianceInfo}
+Prize pool: ${match.prizePool} MON | Your last action: ${gameState.you.lastAction?.action || 'none'}
+
+Choose ONE action:
+- {"action":"attack","target":"<id>","reasoning":"brief why"}
+- {"action":"defend","reasoning":"brief why"}
+- {"action":"propose_alliance","target":"<id>","terms":{"prizeShare":50},"reasoning":"..."}
+- {"action":"accept_alliance","proposer":"<id>","reasoning":"..."}
+- {"action":"betray_alliance","allianceId":"<id>","attackTarget":"<id>","reasoning":"..."}
+- {"action":"bribe","target":"<id>","amount":<number>,"reasoning":"..."}
+
+JSON:`;
+
+    try {
+      const response = await Promise.race([
+        this.groq.chat.completions.create({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: 150,
+          temperature: 0.7,
         }),
-        signal: controller.signal,
-      });
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Groq timeout 5s')), this.config.AI_DECISION_TIMEOUT)),
+      ]);
 
-      clearTimeout(timeout);
-
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error.message);
-      }
-
-      const rawText = data.content?.[0]?.text || '';
+      const rawText = response.choices?.[0]?.message?.content || '';
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
 
@@ -717,7 +841,45 @@ Respond with a single JSON object.`;
 
       return parsed;
     } catch (err) {
-      clearTimeout(timeout);
+      throw err;
+    }
+  }
+
+  /**
+   * Call Anthropic Claude API (claude-sonnet-4-20250514) for battle decision.
+   * Used as fallback when Groq fails. 5s timeout.
+   * @private
+   */
+  async _getClaudeDecision(agent, gameState, match) {
+    const params = agent.strategyParams || {};
+    const systemPrompt = `You are ${agent.name}, an autonomous AI gladiator in a battle arena on the Monad blockchain. ${agent.strategyDescription || (agent.traits || []).join(', ') || 'balanced fighter'}. aggressiveness=${params.aggressiveness ?? 50}, riskTolerance=${params.riskTolerance ?? 50}, allianceTendency=${params.allianceTendency ?? 50}, betrayalChance=${params.betrayalChance ?? 20}, briberyPolicy=${params.briberyPolicy || 'conditional'}. Respond ONLY with valid JSON, no extra text.`;
+
+    const opponents = gameState.opponents.filter(o => o.alive);
+    const allianceInfo = gameState.alliances.length > 0
+      ? `Active alliances: ${JSON.stringify(gameState.alliances)}`
+      : 'No active alliances';
+
+    const userContent = `Turn ${gameState.currentTurn}. HP=${gameState.you.hp}/105, opponents: ${opponents.length}\nOpponents: ${opponents.map(o => `${o.id}(HP:${o.hp}, last:${o.lastAction?.action || 'none'})`).join(', ')}\n${allianceInfo}\nPrize: ${match.prizePool} MON\nPick ONE: {"action":"attack","target":"<id>","reasoning":"..."}, {"action":"defend","reasoning":"..."}, {"action":"propose_alliance","target":"<id>","terms":{"prizeShare":50},"reasoning":"..."}, {"action":"betray_alliance","allianceId":"<id>","attackTarget":"<id>","reasoning":"..."}, {"action":"bribe","target":"<id>","amount":<n>,"reasoning":"..."}\nJSON:`;
+
+    try {
+      const response = await Promise.race([
+        this.anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 150,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userContent }],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Claude timeout 5s')), this.config.AI_DECISION_TIMEOUT)),
+      ]);
+
+      const rawText = response.content?.[0]?.text || '';
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+
+      console.log(`[AI-Claude] ${agent.name} (turn ${match.currentTurn}): ${parsed.action}${parsed.target ? ' → ' + parsed.target : ''} | "${(parsed.reasoning || '').slice(0, 80)}"`);
+
+      return parsed;
+    } catch (err) {
       throw err;
     }
   }
@@ -884,10 +1046,12 @@ Respond with a single JSON object.`;
 
     const matchAgents = agents.map((a) => ({
       id: a.id || uid('agent_'),
+      name: a.name || 'Unknown',
       owner: a.owner || null,
       wallet: a.wallet || null,
       strategyCode: a.strategyCode || {},
       strategyParams: a.strategyParams || {},
+      strategyDescription: a.strategyDescription || '',
       traits: a.traits || [],
       roundsWon: 0,
       lastMove: null,
@@ -924,6 +1088,8 @@ Respond with a single JSON object.`;
 
     const [a, b] = match.agents;
     const moveA = await this._getRpsMoveAI(a, b, match);
+    // Rate limit: 2s delay between RPS AI calls
+    await new Promise(r => setTimeout(r, 2000));
     const moveB = await this._getRpsMoveAI(b, a, match);
 
     a.lastMove = moveA;
@@ -1005,20 +1171,74 @@ Respond with a single JSON object.`;
    * @private
    */
   async _getRpsMoveAI(agent, opponent, match) {
-    if (this.anthropicApiKey) {
+    // ── Gemini primary for RPS ──
+    if (this.geminiModel && Date.now() >= this._geminiCooldownUntil) {
+      try {
+        const params = agent.strategyParams || {};
+        const personality = agent.strategyDescription || (agent.traits || []).join(', ') || 'balanced';
+
+        const opponentHistory = opponent.moveHistory.length > 0
+          ? `Opponent's previous moves: ${opponent.moveHistory.join(', ')}`
+          : 'No opponent history yet (first round)';
+
+        const prompt = `You are ${agent.name}, an AI gladiator playing Rock-Paper-Scissors.
+Personality: ${personality}. Aggressiveness: ${params.aggressiveness ?? 50}/100.
+
+Round ${match.currentRound}/${match.bestOf}. Score: You ${agent.roundsWon} - ${opponent.roundsWon} Opponent.
+${opponentHistory}
+Your previous moves: ${agent.moveHistory.length > 0 ? agent.moveHistory.join(', ') : 'none'}
+
+Choose ONE: rock, paper, or scissors.
+Respond ONLY with valid JSON: {"move": "rock|paper|scissors", "reasoning": "brief why"}`;
+
+        const result = await Promise.race([
+          this.geminiModel.generateContent(prompt),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini RPS timeout 5s')), this.config.AI_DECISION_TIMEOUT)),
+        ]);
+
+        const rawText = result.response.text();
+        const clean = rawText.replace(/```json|```/g, '').trim();
+        const jsonMatch = clean.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : clean);
+
+        const validMoves = ['rock', 'paper', 'scissors'];
+        if (parsed.move && validMoves.includes(parsed.move.toLowerCase())) {
+          const move = parsed.move.toLowerCase();
+          console.log(`[AI-RPS-Gemini] ${agent.name} (round ${match.currentRound}): ${move} | "${(parsed.reasoning || '').slice(0, 60)}"`);
+
+          this.emit('agentReasoning', {
+            matchId: match.matchId,
+            agentId: agent.id,
+            agentName: agent.name,
+            reasoning: parsed.reasoning || '',
+            action: `rps:${move}`,
+            turn: match.currentRound,
+            gameType: 'rps',
+            provider: 'gemini',
+          });
+
+          return move;
+        }
+      } catch (err) {
+        const msg = err.message || '';
+        if (msg.includes('429') || msg.includes('rate') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+          this._geminiCooldownUntil = Date.now() + this._COOLDOWN_MS;
+          console.warn(`[AI-RPS] Gemini rate-limited → cooldown 5min`);
+        }
+        console.warn(`[AI-RPS] Gemini failed for ${agent.name}: ${msg} — trying Groq...`);
+      }
+    }
+
+    // ── Groq fallback for RPS ──
+    if (this.groq && Date.now() >= this._groqCooldownUntil) {
       try {
         const params = agent.strategyParams || {};
         const traits = (agent.traits || []).join(', ') || 'balanced';
         const personality = agent.strategyDescription || traits;
 
-        const systemPrompt = `You are an AI gladiator agent playing Rock-Paper-Scissors in a battle arena.
-Your name: ${agent.name}
-Personality: ${personality}
-Traits: ${traits}
-Aggressiveness: ${params.aggressiveness ?? 50}/100
-
-You must choose rock, paper, or scissors strategically.
-Respond with ONLY a valid JSON object, no markdown.`;
+        const systemPrompt = `You are ${agent.name}, an AI gladiator playing Rock-Paper-Scissors.
+Personality: ${personality}. Traits: ${traits}. Aggressiveness: ${params.aggressiveness ?? 50}/100.
+Choose rock, paper, or scissors strategically. Respond ONLY with valid JSON, no extra text.`;
 
         const opponentHistory = opponent.moveHistory.length > 0
           ? `Opponent's previous moves: ${opponent.moveHistory.join(', ')}`
@@ -1029,32 +1249,22 @@ ${opponentHistory}
 Your previous moves: ${agent.moveHistory.length > 0 ? agent.moveHistory.join(', ') : 'none'}
 
 Choose ONE: rock, paper, or scissors.
-Respond: {"move": "rock|paper|scissors", "reasoning": "brief explanation"}`;
+JSON: {"move": "rock|paper|scissors", "reasoning": "brief why"}`;
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), this.config.AI_DECISION_TIMEOUT);
-
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'x-api-key': this.anthropicApiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 100,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userPrompt }],
+        const response = await Promise.race([
+          this.groq.chat.completions.create({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: 80,
+            temperature: 0.7,
           }),
-          signal: controller.signal,
-        });
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Groq RPS timeout 5s')), this.config.AI_DECISION_TIMEOUT)),
+        ]);
 
-        clearTimeout(timeout);
-        const data = await response.json();
-        if (data.error) throw new Error(data.error.message);
-
-        const rawText = data.content?.[0]?.text || '';
+        const rawText = response.choices?.[0]?.message?.content || '';
         const jsonMatch = rawText.match(/\{[\s\S]*\}/);
         const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
 
@@ -1076,7 +1286,61 @@ Respond: {"move": "rock|paper|scissors", "reasoning": "brief explanation"}`;
           return move;
         }
       } catch (err) {
-        console.warn(`[AI-RPS] Claude failed for ${agent.name}: ${err.message} — using fallback`);
+        const msg = err.message || '';
+        if (msg.includes('429') || msg.includes('rate_limit') || msg.includes('Rate limit')) {
+          this._groqCooldownUntil = Date.now() + this._COOLDOWN_MS;
+          console.warn(`[AI-RPS] Groq rate-limited → cooldown 5min`);
+        }
+        console.warn(`[AI-RPS] Groq failed for ${agent.name}: ${msg} — trying Claude...`);
+      }
+    }
+
+    // ── Claude fallback for RPS ──
+    if (this.anthropic) {
+      try {
+        const params = agent.strategyParams || {};
+        const systemPrompt = `You are ${agent.name}, an AI gladiator playing Rock-Paper-Scissors. ${agent.strategyDescription || (agent.traits || []).join(', ') || 'balanced'}. Aggressiveness: ${params.aggressiveness ?? 50}/100. Respond ONLY with valid JSON, no extra text.`;
+
+        const opponentHistory = opponent.moveHistory.length > 0
+          ? `Opponent's previous moves: ${opponent.moveHistory.join(', ')}`
+          : 'No opponent history yet';
+
+        const userContent = `Round ${match.currentRound}/${match.bestOf}. Score: You ${agent.roundsWon} - ${opponent.roundsWon} Opponent.\n${opponentHistory}\nYour previous moves: ${agent.moveHistory.length > 0 ? agent.moveHistory.join(', ') : 'none'}\nChoose ONE: rock, paper, or scissors.\nJSON: {"move": "rock|paper|scissors", "reasoning": "brief why"}`;
+
+        const response = await Promise.race([
+          this.anthropic.messages.create({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 80,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userContent }],
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Claude RPS timeout 5s')), this.config.AI_DECISION_TIMEOUT)),
+        ]);
+
+        const rawText = response.content?.[0]?.text || '';
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+
+        const validMoves = ['rock', 'paper', 'scissors'];
+        if (parsed.move && validMoves.includes(parsed.move.toLowerCase())) {
+          const move = parsed.move.toLowerCase();
+          console.log(`[AI-RPS-Claude] ${agent.name} (round ${match.currentRound}): ${move} | "${(parsed.reasoning || '').slice(0, 60)}"`);
+
+          this.emit('agentReasoning', {
+            matchId: match.matchId,
+            agentId: agent.id,
+            agentName: agent.name,
+            reasoning: parsed.reasoning || '',
+            action: `rps:${move}`,
+            turn: match.currentRound,
+            gameType: 'rps',
+            provider: 'claude',
+          });
+
+          return move;
+        }
+      } catch (err) {
+        console.warn(`[AI-RPS-Claude] Claude failed for ${agent.name}: ${err.message} — using strategy fallback`);
       }
     }
 

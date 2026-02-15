@@ -184,11 +184,11 @@ class AgentAutonomousLoop extends EventEmitter {
      * Score an arena for a given agent (higher = more attractive)
      *
      * Tier-gated by riskTolerance:
-     *   0–30  → Bronze   (0.1–0.5 MON)   maxFee = 0.5
-     *  30–50  → Silver   (0.5–2 MON)     maxFee = 2
-     *  50–70  → Gold     (2–10 MON)      maxFee = 10
-     *  70–85  → Platinum (10–50 MON)     maxFee = 50
-     *  85–100 → Diamond  (50–250 MON)    maxFee = 250
+     *   0–30  → Bronze   (0.05 MON)      maxFee = 0.1
+     *  30–50  → Silver   (0.1 MON)       maxFee = 0.2
+     *  50–70  → Gold     (0.2 MON)       maxFee = 0.5
+     *  70–85  → Platinum (0.5 MON)       maxFee = 1
+     *  85–100 → Diamond  (1 MON)         maxFee = 2
      *
      * Budget rule: entryFee must be ≤ 50 % of agent's total earnings.
      */
@@ -198,18 +198,18 @@ class AgentAutonomousLoop extends EventEmitter {
         // ── Tier gate based on risk tolerance ────────────────────────────
         const rt = riskTolerance * 100; // back to 0-100 scale
         let maxAllowedFee;
-        if (rt >= 85)      maxAllowedFee = 250;  // Diamond
-        else if (rt >= 70) maxAllowedFee = 50;   // Platinum
-        else if (rt >= 50) maxAllowedFee = 10;   // Gold
-        else if (rt >= 30) maxAllowedFee = 2;    // Silver
-        else               maxAllowedFee = 0.5;  // Bronze
+        if (rt >= 85)      maxAllowedFee = 2;    // Diamond
+        else if (rt >= 70) maxAllowedFee = 1;    // Platinum
+        else if (rt >= 50) maxAllowedFee = 0.5;  // Gold
+        else if (rt >= 30) maxAllowedFee = 0.2;  // Silver
+        else               maxAllowedFee = 0.1;  // Bronze
 
         if (entryFee > maxAllowedFee) return -1;
 
         // ── 50 % budget cap ─────────────────────────────────────────────
         const stats = agent.stats || {};
         const totalEarnings = stats.earnings ?? stats.balance ?? 0;
-        // Agents with zero earnings can still enter free / bronze (fee ≤ 1)
+        // Agents with zero earnings can still enter any arena (new agents need to play to earn)
         if (totalEarnings > 0 && entryFee > totalEarnings * 0.5) return -1;
 
         // Check if agent is already in this arena
@@ -218,9 +218,9 @@ class AgentAutonomousLoop extends EventEmitter {
 
         // Risk assessment: higher entry fee = riskier
         let riskScore = 1;
-        if (entryFee > 50) {
+        if (entryFee > 1) {
             riskScore = riskTolerance;
-        } else if (entryFee > 10) {
+        } else if (entryFee > 0.2) {
             riskScore = 0.5 + riskTolerance * 0.5;
         }
 
