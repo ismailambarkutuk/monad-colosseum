@@ -568,7 +568,7 @@ export default function MyAgents({ onNavigate }) {
                     {isSendConfirmed && (
                         <div style={{ marginBottom: '1rem' }}>
                             <p style={{ color: '#22c55e', fontWeight: 600, marginBottom: '0.25rem' }}>✅ Transfer successful!</p>
-                            <a href={`https://testnet.monadvision.com/tx/${sendTxHash}`} target="_blank" rel="noreferrer"
+                            <a href={`https://monadvision.com/tx/${sendTxHash}`} target="_blank" rel="noreferrer"
                                 style={{ color: 'var(--accent-cyan)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
                                 TX: {sendTxHash.slice(0, 12)}...{sendTxHash.slice(-8)}
                             </a>
@@ -618,7 +618,7 @@ export default function MyAgents({ onNavigate }) {
                         <div style={{ marginBottom: '1rem' }}>
                             <p style={{ color: '#22c55e', fontWeight: 600, marginBottom: '0.25rem' }}>✅ {withdrawResult.amount} MON withdrawn!</p>
                             {withdrawResult.txHash && (
-                                <a href={`https://testnet.monadvision.com/tx/${withdrawResult.txHash}`} target="_blank" rel="noreferrer"
+                                <a href={`https://monadvision.com/tx/${withdrawResult.txHash}`} target="_blank" rel="noreferrer"
                                     style={{ color: 'var(--accent-cyan)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
                                     TX: {withdrawResult.txHash.slice(0, 12)}...{withdrawResult.txHash.slice(-8)}
                                 </a>
@@ -809,7 +809,7 @@ export default function MyAgents({ onNavigate }) {
                                                 {new Date(tx.timestamp).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                                             </span>
                                             {tx.txHash && (
-                                                <a href={`https://testnet.monadvision.com/tx/${tx.txHash}`} target="_blank" rel="noreferrer"
+                                                <a href={`https://monadvision.com/tx/${tx.txHash}`} target="_blank" rel="noreferrer"
                                                     style={{ color: 'var(--accent-cyan)', fontSize: '0.65rem' }}>
                                                     🔗
                                                 </a>

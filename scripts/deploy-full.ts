@@ -182,11 +182,11 @@ async function main() {
     await escrowContract.grantRole(ORACLE_ROLE, addresses.contracts.Arena);
     console.log(`   ✅ Granted ORACLE_ROLE to Arena on BribeEscrow`);
 
-    // Grant BATTLE_REPORTER_ROLE to Arena on BattleNarrator
-    const BATTLE_REPORTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("BATTLE_REPORTER_ROLE"));
+    // Grant NARRATOR_ROLE to Arena on BattleNarrator
+    const NARRATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("NARRATOR_ROLE"));
     const narratorContract = await ethers.getContractAt("BattleNarrator", addresses.contracts.BattleNarrator);
-    await narratorContract.grantRole(BATTLE_REPORTER_ROLE, addresses.contracts.Arena);
-    console.log(`   ✅ Granted BATTLE_REPORTER_ROLE to Arena on BattleNarrator`);
+    await narratorContract.grantRole(NARRATOR_ROLE, addresses.contracts.Arena);
+    console.log(`   ✅ Granted NARRATOR_ROLE to Arena on BattleNarrator`);
 
     // Grant ARENA_ROLE to Arena on RevenueDistributor
     const ARENA_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ARENA_ROLE"));
@@ -194,11 +194,11 @@ async function main() {
     await revenueContract.grantRole(ARENA_ROLE, addresses.contracts.Arena);
     console.log(`   ✅ Granted ARENA_ROLE to Arena on RevenueDistributor`);
 
-    // Grant GAME_MASTER_ROLE to Arena on BuffOracle
-    const GAME_MASTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("GAME_MASTER_ROLE"));
+    // Grant ARENA_ROLE to Arena on BuffOracle
+    const BUFF_ARENA_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ARENA_ROLE"));
     const buffOracleContract = await ethers.getContractAt("BuffOracle", addresses.contracts.BuffOracle);
-    await buffOracleContract.grantRole(GAME_MASTER_ROLE, addresses.contracts.Arena);
-    console.log(`   ✅ Granted GAME_MASTER_ROLE to Arena on BuffOracle`);
+    await buffOracleContract.grantRole(BUFF_ARENA_ROLE, addresses.contracts.Arena);
+    console.log(`   ✅ Granted ARENA_ROLE to Arena on BuffOracle`);
 
     // Set escrow on RevenueDistributor for reputation lookups
     await revenueContract.setEscrowContract(addresses.contracts.BribeEscrow);

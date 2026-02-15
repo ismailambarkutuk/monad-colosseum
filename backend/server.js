@@ -40,7 +40,7 @@ const strategies = require('./templates/strategies');
 // ─── Config ──────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
-const MONAD_RPC = process.env.MONAD_TESTNET_RPC || 'https://testnet-rpc.monad.xyz';
+const MONAD_RPC = process.env.MONAD_RPC || process.env.MONAD_TESTNET_RPC || 'https://rpc.monad.xyz';
 const PLATFORM_PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 
 // ─── Blockchain Provider ─────────────────────────────────────────────────────

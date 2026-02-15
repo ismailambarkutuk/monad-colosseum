@@ -15,7 +15,7 @@ import { ethers } from 'ethers';
 import { Arena3DViewer } from './components/Arena3DViewer';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CONTRACT ADDRESSES (Monad Testnet)
+// CONTRACT ADDRESSES (Monad Mainnet)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const ARENA_ADDRESS = import.meta.env.VITE_ARENA_ADDRESS || '0x0000000000000000000000000000000000000001';
@@ -322,7 +322,7 @@ export function Spectate() {
                         .map(d => {
                             const shortHash = d.txHash ? `${d.txHash.slice(0, 10)}...${d.txHash.slice(-6)}` : 'N/A';
                             const explorerUrl = d.txHash && d.txHash !== 'retained'
-                                ? `https://testnet.monadvision.com/tx/${d.txHash}` : null;
+                                ? `https://monadvision.com/tx/${d.txHash}` : null;
                             const desc = d.type === 'platform_fee'
                                 ? `🏦 Platform fee: ${d.amount.toFixed(4)} MON (retained)`
                                 : `💰 Prize: ${d.amount.toFixed(4)} MON → ${d.agentName}${explorerUrl ? ` (tx: ${shortHash})` : ''}`;
@@ -346,7 +346,7 @@ export function Spectate() {
                 case 'tx:entryFee': {
                     // On-chain entry fee payment
                     const shortHash = msg.txHash ? `${msg.txHash.slice(0, 10)}...${msg.txHash.slice(-6)}` : '';
-                    const explorerUrl = msg.txHash ? `https://testnet.monadvision.com/tx/${msg.txHash}` : null;
+                    const explorerUrl = msg.txHash ? `https://monadvision.com/tx/${msg.txHash}` : null;
                     setCombatLog(prev => [{
                         type: 'DRAMATIC_MOMENT',
                         primaryActor: msg.agentId || '',

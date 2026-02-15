@@ -3,9 +3,9 @@
  * AgentRegistry is called from the user's wallet via wagmi
  */
 
-// Deployed contract addresses (Monad Testnet)
+// Deployed contract addresses (Monad Mainnet)
 export const CONTRACTS = {
-    AGENT_REGISTRY: '0xA18A0821416c6499cAb25bF2c90fCEF6E482921F',
+    AGENT_REGISTRY: '0x8162b8E7ea285A8D62B8D1600E41beED8Aa426Ce',
 }
 
 // AgentRegistry ABI — only the functions needed by frontend

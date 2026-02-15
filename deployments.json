@@ -1,20 +1,20 @@
 {
-  "network": "monad_testnet",
-  "chainId": 10143,
-  "timestamp": "2026-02-11T13:50:39.602Z",
+  "network": "monadMainnet",
+  "chainId": 143,
+  "timestamp": "2026-02-15T23:06:41.478Z",
   "deployer": "0x8aE7eB5040cCA8174344dd52862F511fD12632B9",
   "contracts": {
-    "BattleNarrator": "0x402Fd1c350e433615BF52fa8564EBfFbbf9322E7",
-    "BuffOracle": "0xED578054ab2De7f5d05E8a57dA8Ea5bc0aB155c5",
-    "BribeEscrow": "0x486b34115c7f006627Bf5dE64929a8E31e6bB540",
-    "RevenueDistributor": "0x2FfB16B4d2AF62494E739673E3603E3C23aFb69B",
-    "Arena": "0x3b9709D245907F8Fa59cab03f38BCE0C8F9FE892",
-    "AgentRegistry": "0xA18A0821416c6499cAb25bF2c90fCEF6E482921F",
-    "Leaderboard": "0x306FF751a5cc0D709231E66F14b58621A1388941"
+    "BattleNarrator": "0x495f590c18AAFb992c2dD4773DeBca924d11f0B3",
+    "BuffOracle": "0xd9D7E2a947597713a76b655077221fC9Cc867BB3",
+    "BribeEscrow": "0xbDf448E40BA63808C5241501eCb75c9118f3F5fa",
+    "RevenueDistributor": "0xcA5c8ad32Eba5d897404dEb758d017f680EC91a2",
+    "Arena": "0xd4489f6285CeB4398c6A902cfd34022B86DEe0d1",
+    "AgentRegistry": "0x8162b8E7ea285A8D62B8D1600E41beED8Aa426Ce",
+    "Leaderboard": "0xd4E0Cf36dBf9D6Ec2a55e49e1521af5Ba0851f87"
   },
   "roles": {
     "admin": "0x8aE7eB5040cCA8174344dd52862F511fD12632B9",
     "gameMaster": "0x8aE7eB5040cCA8174344dd52862F511fD12632B9",
-    "oracle": "0x3b9709D245907F8Fa59cab03f38BCE0C8F9FE892"
+    "oracle": "0xd4489f6285CeB4398c6A902cfd34022B86DEe0d1"
   }
 }

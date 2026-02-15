@@ -443,7 +443,7 @@ function CreateAgentPage() {
                             </p>
                             {txHash && (
                                 <a
-                                    href={`https://testnet.monadvision.com/tx/${txHash}`}
+                                    href={`https://monadvision.com/tx/${txHash}`}
                                     target="_blank" rel="noreferrer"
                                     style={{ color: 'var(--accent-cyan)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}
                                 >
@@ -518,7 +518,7 @@ function CreateAgentPage() {
                             <div style={{ marginBottom: '1rem', fontSize: '0.8rem' }}>
                                 <span className="mc-text-muted">Onchain TX: </span>
                                 <a
-                                    href={`https://testnet.monadvision.com/tx/${confirmedAgent.onchainTxHash}`}
+                                    href={`https://monadvision.com/tx/${confirmedAgent.onchainTxHash}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}

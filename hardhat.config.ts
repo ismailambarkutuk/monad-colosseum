@@ -8,6 +8,7 @@ dotenv.config();
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
 const MONAD_TESTNET_RPC = process.env.MONAD_TESTNET_RPC || "https://testnet-rpc.monad.xyz";
+const MONAD_MAINNET_RPC = process.env.MONAD_MAINNET_RPC || "https://rpc.monad.xyz";
 
 const config: HardhatUserConfig = {
     solidity: {
@@ -39,6 +40,12 @@ const config: HardhatUserConfig = {
         monad_testnet: {
             url: MONAD_TESTNET_RPC,
             chainId: 10143,
+            accounts: [PRIVATE_KEY],
+            gasPrice: "auto"
+        },
+        monadMainnet: {
+            url: MONAD_MAINNET_RPC,
+            chainId: 143,
             accounts: [PRIVATE_KEY],
             gasPrice: "auto"
         },

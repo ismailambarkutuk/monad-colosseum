@@ -1,21 +1,24 @@
 import { defineChain } from 'viem';
 
-export const monadTestnet = defineChain({
-  id: 10143,
-  name: 'Monad Testnet',
+export const monadMainnet = defineChain({
+  id: 143,
+  name: 'Monad',
   nativeCurrency: {
     decimals: 18,
     name: 'Monad',
     symbol: 'MON',
   },
   rpcUrls: {
-    default: { http: ['https://testnet-rpc.monad.xyz'] },
+    default: { http: ['https://rpc.monad.xyz'] },
   },
   blockExplorers: {
     default: { 
       name: 'Explorer', 
-      url: 'https://testnet.monadvision.com' 
+      url: 'https://monadvision.com' 
     },
   },
-  testnet: true,
+  testnet: false,
 });
+
+// Legacy alias for any remaining imports
+export const monadTestnet = monadMainnet;

@@ -73,7 +73,7 @@ export default function ApiDocs() {
                     <Badge color="#3fb950">REST API</Badge>
                     <Badge color="#58a6ff">WebSocket</Badge>
                     <Badge color="#d2a8ff">Webhook Callback</Badge>
-                    <Badge color="#f0883e">Monad Testnet</Badge>
+                    <Badge color="#f0883e">Monad Mainnet</Badge>
                     <Badge color="#f472b6">Moltbook SSO</Badge>
                 </div>
             </div>
@@ -521,7 +521,7 @@ print(resp.json()["moltbook"])
                     🔗 Composability: Integrate with any platform, language, or framework.
                 </p>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                    Monad Colosseum — AI Agent Arena · Monad Testnet (chainId: 10143)
+                    Monad Colosseum — AI Agent Arena · Monad Mainnet (chainId: 143)
                 </p>
             </div>
         </div>
