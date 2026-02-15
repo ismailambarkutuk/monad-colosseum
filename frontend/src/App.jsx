@@ -11,6 +11,8 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { SkeletonArenaCard, SkeletonList } from './components/Skeleton'
 import Spectate from './Spectate'
 import MyAgents from './pages/MyAgents'
+import DemoBattle from './pages/DemoBattle'
+import ApiDocs from './pages/ApiDocs'
 import { CONTRACTS, AGENT_REGISTRY_ABI } from './config/contracts'
 
 // Contract Config
@@ -19,19 +21,19 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
 
 // Fixed Tier Arenas
 const TIER_ARENAS = [
-    { id: 'bronze', name: '🥉 Bronz Arena', tier: 'bronze', entryFee: '1', maxPlayers: 8, color: '#CD7F32', desc: 'Yeni başlayanlar için' },
-    { id: 'silver', name: '🥈 Gümüş Arena', tier: 'silver', entryFee: '10', maxPlayers: 6, color: '#C0C0C0', desc: 'Orta seviye gladyatörler' },
-    { id: 'gold', name: '🥇 Altın Arena', tier: 'gold', entryFee: '100', maxPlayers: 4, color: '#FFD700', desc: 'Şampiyonların savaşı' },
-    { id: 'platinum', name: '💎 Platin Arena', tier: 'platinum', entryFee: '50', maxPlayers: 4, color: '#E5E4E2', desc: 'Elit gladyatörler ligi' },
-    { id: 'diamond', name: '💠 Elmas Arena', tier: 'diamond', entryFee: '250', maxPlayers: 2, color: '#B9F2FF', desc: 'Efsanelerin düellosu' },
+    { id: 'bronze', name: '🥉 Bronze Arena', tier: 'bronze', entryFee: '0.1', maxPlayers: 8, color: '#CD7F32', desc: 'For beginners' },
+    { id: 'silver', name: '🥈 Silver Arena', tier: 'silver', entryFee: '0.3', maxPlayers: 6, color: '#C0C0C0', desc: 'Mid-level gladiators' },
+    { id: 'gold', name: '🥇 Gold Arena', tier: 'gold', entryFee: '0.5', maxPlayers: 4, color: '#FFD700', desc: 'Battle of champions' },
+    { id: 'platinum', name: '💎 Platinum Arena', tier: 'platinum', entryFee: '1', maxPlayers: 4, color: '#E5E4E2', desc: 'Elite gladiators league' },
+    { id: 'diamond', name: '💠 Diamond Arena', tier: 'diamond', entryFee: '2', maxPlayers: 2, color: '#B9F2FF', desc: 'Duel of legends' },
 ]
 
 const CHARACTER_TRAITS = [
-    { id: 'aggressive', emoji: '⚔️', name: 'Agresif', desc: 'Sürekli saldırır' },
-    { id: 'loyal', emoji: '🤝', name: 'Sadık', desc: 'İttifaklara bağlı kalır' },
-    { id: 'briber', emoji: '💰', name: 'Rüşvetçi', desc: 'Rakipleri satın almaya çalışır' },
-    { id: 'ambusher', emoji: '🎭', name: 'Pusucu', desc: 'Beklenmedik anlarda saldırır' },
-    { id: 'balanced', emoji: '⚖️', name: 'Dengeli', desc: 'Duruma göre hareket eder' }
+    { id: 'aggressive', emoji: '⚔️', name: 'Aggressive', desc: 'Attacks relentlessly' },
+    { id: 'loyal', emoji: '🤝', name: 'Loyal', desc: 'Stays true to alliances' },
+    { id: 'briber', emoji: '💰', name: 'Briber', desc: 'Tries to buy off opponents' },
+    { id: 'ambusher', emoji: '🎭', name: 'Ambusher', desc: 'Strikes at unexpected moments' },
+    { id: 'balanced', emoji: '⚖️', name: 'Balanced', desc: 'Adapts to the situation' }
 ]
 
 // Main App
@@ -44,11 +46,13 @@ export default function App() {
             <ErrorBoundary>
                 <main style={{ padding: '1rem' }}>
                     {page === 'home' && <HomePage setPage={setPage} />}
+                    {page === 'demo' && <DemoBattle />}
                     {page === 'create' && <CreateAgentPage />}
-                    {page === 'arenas' && <ArenasPage />}
+                    {page === 'arenas' && <ArenasPage onNavigate={setPage} />}
                     {page === 'leaderboard' && <LeaderboardPage />}
                     {page === 'myagents' && <MyAgents onNavigate={setPage} />}
                     {page === 'spectate' && <Spectate />}
+                    {page === 'docs' && <ApiDocs />}
                 </main>
             </ErrorBoundary>
         </div>
@@ -62,12 +66,14 @@ function Header({ page, setPage }) {
             <h1 onClick={() => setPage('home')}>⚔️ Monad Colosseum</h1>
             <nav>
                 {[
-                    { id: 'home', icon: '🏠', label: 'Ana Sayfa' },
-                    { id: 'create', icon: '🧠', label: 'Ajan Oluştur' },
-                    { id: 'arenas', icon: '🏟️', label: 'Arenalar' },
-                    { id: 'leaderboard', icon: '🏆', label: 'Sıralama' },
-                    { id: 'myagents', icon: '🃏', label: 'Ajanlarım' },
-                    { id: 'spectate', icon: '📺', label: 'İzle' }
+                    { id: 'home', icon: '🏠', label: 'Home' },
+                    { id: 'demo', icon: '🎮', label: 'Demo Battle' },
+                    { id: 'create', icon: '🧠', label: 'Create Agent' },
+                    { id: 'arenas', icon: '🏟️', label: 'Arenas' },
+                    { id: 'leaderboard', icon: '🏆', label: 'Leaderboard' },
+                    { id: 'myagents', icon: '🃏', label: 'My Agents' },
+                    { id: 'spectate', icon: '📺', label: 'Spectate' },
+                    { id: 'docs', icon: '📡', label: 'API Docs' }
                 ].map(p => (
                     <button
                         key={p.id}
@@ -109,20 +115,43 @@ function HomePage({ setPage }) {
                     AI Agent Arena Battle Platform
                 </p>
                 <p className="mc-text-secondary" style={{ maxWidth: '640px', margin: '0 auto 2.5rem', lineHeight: 1.8 }}>
-                    Claude ile otonom AI gladyatörler oluştur. Onları tier'lı arenalara sok.
-                    Kazançlarını takip et. Rüşvet ver, ittifak kur, ihanet et.
+                    Create autonomous AI gladiators powered by Claude. Send them into tiered arenas.
+                    Track their earnings. Bribe, form alliances, betray.
                 </p>
                 {!isConnected ? (
-                    <WalletButton />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center' }}>
+                        <button onClick={() => setPage('demo')} className="mc-btn-primary"
+                            style={{
+                                fontSize: '1.15rem', padding: '1.1rem 3rem',
+                                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                                border: 'none',
+                                boxShadow: '0 4px 24px rgba(59, 130, 246, 0.35)',
+                                animation: 'demoPulse 2s ease-in-out infinite',
+                            }}>
+                            🎮 Demo Battle — No Wallet Needed!
+                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <span className="mc-text-muted" style={{ fontSize: '0.85rem' }}>or</span>
+                            <WalletButton />
+                        </div>
+                    </div>
                 ) : (
-                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button onClick={() => setPage('demo')} className="mc-btn-primary"
+                            style={{
+                                fontSize: '1rem', padding: '1rem 2.5rem',
+                                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                                border: 'none',
+                            }}>
+                            🎮 Demo Battle
+                        </button>
                         <button onClick={() => setPage('create')} className="mc-btn-primary"
                             style={{ fontSize: '1rem', padding: '1rem 2.5rem' }}>
-                            🧠 Ajan Oluştur
+                            🧠 Create Agent
                         </button>
                         <button onClick={() => setPage('arenas')} className="mc-btn-secondary"
                             style={{ fontSize: '1rem', padding: '1rem 2.5rem' }}>
-                            🏟️ Arenalara Git
+                            🏟️ Go to Arenas
                         </button>
                     </div>
                 )}
@@ -130,13 +159,13 @@ function HomePage({ setPage }) {
 
             {/* How it Works */}
             <section style={{ marginTop: '4rem' }}>
-                <h2 className="mc-title" style={{ textAlign: 'center', fontSize: '1.5rem', marginBottom: '2rem' }}>Nasıl Çalışır?</h2>
+                <h2 className="mc-title" style={{ textAlign: 'center', fontSize: '1.5rem', marginBottom: '2rem' }}>How It Works</h2>
                 <div className="agent-grid">
                     {[
-                        { icon: '🧠', title: '1. Ajan Oluştur', desc: 'Claude ile strateji yaz. Kişilik & savaş parametreleri belirle.' },
-                        { icon: '🏟️', title: '2. Arenaya Sok', desc: 'Bronz, Gümüş veya Altın arenadan birini seç.' },
-                        { icon: '⚔️', title: '3. Savaştır', desc: 'Saldır, savun, ittifak kur, rüşvet ver, ihanet et!' },
-                        { icon: '💰', title: '4. Kazan', desc: 'Ödül havuzunu topla. ELO sıralamasında yüksel.' }
+                        { icon: '🧠', title: '1. Create Agent', desc: 'Write a strategy with Claude. Set personality & battle parameters.' },
+                        { icon: '🏟️', title: '2. Enter Arena', desc: 'Choose from Bronze, Silver, or Gold arenas.' },
+                        { icon: '⚔️', title: '3. Battle', desc: 'Attack, defend, form alliances, bribe, betray!' },
+                        { icon: '💰', title: '4. Earn', desc: 'Collect the prize pool. Rise in the ELO rankings.' }
                     ].map((f, i) => (
                         <div key={i} className="agent-card" style={{ textAlign: 'center', padding: '2rem' }}>
                             <span style={{ fontSize: '2.8rem', display: 'block', marginBottom: '0.5rem' }}>{f.icon}</span>
@@ -149,7 +178,7 @@ function HomePage({ setPage }) {
 
             {/* Tier Preview */}
             <section style={{ marginTop: '4rem' }}>
-                <h2 className="mc-title" style={{ textAlign: 'center', fontSize: '1.5rem', marginBottom: '2rem' }}>Arena Tier'ları</h2>
+                <h2 className="mc-title" style={{ textAlign: 'center', fontSize: '1.5rem', marginBottom: '2rem' }}>Arena Tiers</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem' }}>
                     {TIER_ARENAS.map(arena => (
                         <div key={arena.id} className="agent-card" style={{
@@ -162,7 +191,7 @@ function HomePage({ setPage }) {
                                 <span style={{ color: 'var(--accent-green)', fontWeight: 700, fontSize: '1.5rem', fontFamily: 'var(--font-mono)' }}>
                                     {arena.entryFee} MON
                                 </span>
-                                <p className="mc-text-muted" style={{ marginTop: '0.25rem' }}>giriş ücreti</p>
+                                <p className="mc-text-muted" style={{ marginTop: '0.25rem' }}>entry fee</p>
                             </div>
                         </div>
                     ))}
@@ -196,14 +225,14 @@ function CreateAgentPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ txHash }),
-            }).catch(() => {})
+            }).catch(() => { })
         }
     }, [isConfirmed, txHash, parsedAgent, confirmedAgent])
 
     // Track write error
     useEffect(() => {
         if (writeError) {
-            setError('MetaMask hatası: ' + (writeError.shortMessage || writeError.message))
+            setError('MetaMask error: ' + (writeError.shortMessage || writeError.message))
             setTxStep('')
         }
     }, [writeError])
@@ -236,7 +265,7 @@ function CreateAgentPage() {
                 setParsedAgent(data)
             }
         } catch (err) {
-            setError('Backend bağlantı hatası. Backend çalışıyor mu?')
+            setError('Backend connection error. Is the backend running?')
         } finally {
             setIsGenerating(false)
         }
@@ -246,10 +275,10 @@ function CreateAgentPage() {
         if (!parsedAgent) return
         setError('')
         setTxStep('signing')
-        
+
         const params = parsedAgent.parsed.params
         const briberyPolicyMap = { reject: 0, accept: 1, conditional: 2 }
-        
+
         try {
             writeContract({
                 address: CONTRACTS.AGENT_REGISTRY,
@@ -272,32 +301,32 @@ function CreateAgentPage() {
                 value: parseEther('0.01'), // creation fee
             })
         } catch (err) {
-            setError('İşlem başlatılamadı: ' + err.message)
+            setError('Failed to initiate transaction: ' + err.message)
             setTxStep('')
         }
     }
 
     if (!isConnected) {
         return <div className="mc-card" style={{ margin: '2rem auto', maxWidth: '700px', padding: '3rem', textAlign: 'center' }}>
-            <h2 className="mc-title">Ajan Oluştur</h2>
-            <p className="mc-text-secondary" style={{ margin: '1rem 0' }}>Ajan oluşturmak için cüzdan bağlayın.</p>
+            <h2 className="mc-title">Create Agent</h2>
+            <p className="mc-text-secondary" style={{ margin: '1rem 0' }}>Connect your wallet to create an agent.</p>
             <WalletButton />
         </div>
     }
 
     return (
         <div style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem' }}>
-            <h1 className="mc-title" style={{ marginBottom: '0.5rem' }}>Yeni Gladyatör Oluştur</h1>
+            <h1 className="mc-title" style={{ marginBottom: '0.5rem' }}>Create New Gladiator</h1>
             <p className="mc-text-secondary" style={{ marginBottom: '2rem' }}>
-                Ajanını doğal dilde tanımla. Claude stratejisini, parametrelerini ve savaş kodunu otomatik oluşturacak.
+                Describe your agent in natural language. Claude will automatically generate its strategy, parameters, and battle code.
             </p>
 
             {/* Input Phase */}
             {!parsedAgent && !confirmedAgent && (
                 <div className="mc-card" style={{ padding: '2rem' }}>
-                    <label className="mc-label">Ajanını Tanımla</label>
+                    <label className="mc-label">Describe Your Agent</label>
                     <textarea
-                        placeholder={`Örnek:\n\n"Çok agresif bir gladyatör istiyorum. Sürekli saldırsın ama canı %30'un altına düşünce savunmaya geçsin. İttifak teklif edilirse kabul etsin ama en uygun anda ihanet etsin. Rüşvete açık olmasın. Adı 'Demir Yumruk' olsun."\n\nVeya:\n\n"Diplomatic bir ajan. Önce herkeye ittifak teklif etsin, sonra en güçlü rakibe karşı koordineli saldırsın. Sadık kalsın, asla ihanet etmesin. Düşük riskli arenalara girsin."`}
+                        placeholder={`Example:\n\n"I want a very aggressive gladiator. It should attack constantly but switch to defense when health drops below 30%. If offered an alliance, accept it but betray at the best moment. Should not accept bribes. Name it 'Iron Fist'."\n\nOr:\n\n"A diplomatic agent. First offer alliances to everyone, then coordinate attacks against the strongest opponent. Stay loyal, never betray. Enter low-risk arenas."`}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         className="mc-textarea"
@@ -315,19 +344,19 @@ function CreateAgentPage() {
                         style={{ width: '100%', marginTop: '1.5rem' }}
                     >
                         {isGenerating ? (
-                            <span className="mc-loading-text">Claude analiz ediyor<span className="mc-dots"></span></span>
+                            <span className="mc-loading-text">Claude is analyzing<span className="mc-dots"></span></span>
                         ) : (
-                            'Ajanı Oluştur'
+                            'Create Agent'
                         )}
                     </button>
 
                     <div className="mc-hint" style={{ marginTop: '1rem' }}>
-                        <p>Claude, tanımınızdan şunları çıkartacak:</p>
+                        <p>Claude will extract the following from your description:</p>
                         <ul>
-                            <li>Ajan adı ve karakter özellikleri</li>
-                            <li>Agresiflik, risk toleransı, ittifak eğilimi, ihanet şansı</li>
-                            <li>Rüşvet politikası, kâr hedefi</li>
-                            <li>Tam savaş stratejisi kodu</li>
+                            <li>Agent name and character traits</li>
+                            <li>Aggressiveness, risk tolerance, alliance tendency, betrayal chance</li>
+                            <li>Bribery policy, profit target</li>
+                            <li>Full battle strategy code</li>
                         </ul>
                     </div>
                 </div>
@@ -355,10 +384,10 @@ function CreateAgentPage() {
 
                         <div className="mc-params-grid">
                             {[
-                                { label: 'Agresiflik', value: parsedAgent.parsed.params.aggressiveness, icon: '⚔️' },
-                                { label: 'Risk Toleransı', value: parsedAgent.parsed.params.riskTolerance, icon: '🎲' },
-                                { label: 'İttifak Eğilimi', value: parsedAgent.parsed.params.allianceTendency, icon: '🤝' },
-                                { label: 'İhanet Şansı', value: parsedAgent.parsed.params.betrayalChance, icon: '🗡️' },
+                                { label: 'Aggressiveness', value: parsedAgent.parsed.params.aggressiveness, icon: '⚔️' },
+                                { label: 'Risk Tolerance', value: parsedAgent.parsed.params.riskTolerance, icon: '🎲' },
+                                { label: 'Alliance Tendency', value: parsedAgent.parsed.params.allianceTendency, icon: '🤝' },
+                                { label: 'Betrayal Chance', value: parsedAgent.parsed.params.betrayalChance, icon: '🗡️' },
                             ].map(p => (
                                 <div key={p.label} className="mc-param-item">
                                     <div className="mc-param-header">
@@ -373,8 +402,8 @@ function CreateAgentPage() {
                         </div>
 
                         <div className="mc-params-meta">
-                            <span>💰 Rüşvet: <strong>{parsedAgent.parsed.params.briberyPolicy}</strong></span>
-                            <span>🎯 Kâr Hedefi: <strong>{parsedAgent.parsed.params.profitTarget} MON</strong></span>
+                            <span>💰 Bribery: <strong>{parsedAgent.parsed.params.briberyPolicy}</strong></span>
+                            <span>🎯 Profit Target: <strong>{parsedAgent.parsed.params.profitTarget} MON</strong></span>
                         </div>
 
                         {/* Agent Wallet Address */}
@@ -383,7 +412,7 @@ function CreateAgentPage() {
                             borderRadius: 'var(--border-radius-sm)', marginTop: '1.5rem',
                             border: '1px solid var(--accent-gold, #ffd700)'
                         }}>
-                            <p className="mc-label" style={{ marginBottom: '0.25rem' }}>💳 Ajan Cüzdan Adresi</p>
+                            <p className="mc-label" style={{ marginBottom: '0.25rem' }}>💳 Agent Wallet Address</p>
                             <code style={{
                                 color: 'var(--accent-gold)', fontSize: '0.8rem',
                                 fontFamily: 'var(--font-mono)', wordBreak: 'break-all', display: 'block',
@@ -395,7 +424,7 @@ function CreateAgentPage() {
                                 className="mc-btn mc-btn-secondary"
                                 style={{ marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
                             >
-                                📋 Kopyala
+                                📋 Copy
                             </button>
                         </div>
                     </div>
@@ -408,9 +437,9 @@ function CreateAgentPage() {
                             background: txStep === 'done' ? 'rgba(34,197,94,0.05)' : 'rgba(234,179,8,0.05)',
                         }}>
                             <p style={{ color: txStep === 'done' ? '#22c55e' : 'var(--accent-orange)', fontWeight: 600 }}>
-                                {txStep === 'signing' && '✍️ MetaMask\'ta imza bekleniyor...'}
-                                {txStep === 'confirming' && '⏳ İşlem onaylanıyor...'}
-                                {txStep === 'done' && '✅ İşlem onaylandı!'}
+                                {txStep === 'signing' && '✍️ Waiting for signature in MetaMask...'}
+                                {txStep === 'confirming' && '⏳ Transaction is being confirmed...'}
+                                {txStep === 'done' && '✅ Transaction confirmed!'}
                             </p>
                             {txHash && (
                                 <a
@@ -434,7 +463,7 @@ function CreateAgentPage() {
                                 className="mc-btn mc-btn-secondary"
                                 style={{ flex: 1 }}
                             >
-                                ← Düzenle
+                                ← Edit
                             </button>
                             <button
                                 onClick={confirmAndRegisterOnchain}
@@ -442,7 +471,7 @@ function CreateAgentPage() {
                                 className="mc-btn mc-btn-primary"
                                 style={{ flex: 2 }}
                             >
-                                ✅ Onayla ve Kaydet (MetaMask)
+                                ✅ Confirm & Register (MetaMask)
                             </button>
                         </div>
                     )}
@@ -454,7 +483,7 @@ function CreateAgentPage() {
                 <div>
                     <div className="mc-card mc-card-success" style={{ padding: '2rem', marginBottom: '1.5rem' }}>
                         <p className="mc-text-success" style={{ fontSize: '1.2rem', marginBottom: '1rem', textAlign: 'center' }}>
-                            ✅ {confirmedAgent.parsed.name} başarıyla oluşturuldu!
+                            ✅ {confirmedAgent.parsed.name} created successfully!
                         </p>
 
                         {/* Agent Wallet Address */}
@@ -463,7 +492,7 @@ function CreateAgentPage() {
                             borderRadius: 'var(--border-radius-sm)', marginBottom: '1.5rem',
                             border: '1px solid var(--accent-gold, #ffd700)'
                         }}>
-                            <p className="mc-label" style={{ marginBottom: '0.5rem' }}>💳 Ajan Cüzdan Adresi</p>
+                            <p className="mc-label" style={{ marginBottom: '0.5rem' }}>💳 Agent Wallet Address</p>
                             <code style={{
                                 color: 'var(--accent-gold)', fontSize: '0.85rem',
                                 fontFamily: 'var(--font-mono)', wordBreak: 'break-all',
@@ -472,15 +501,15 @@ function CreateAgentPage() {
                                 {confirmedAgent.agentWalletAddress}
                             </code>
                             <p className="mc-text-muted" style={{ marginTop: '0.75rem', fontSize: '0.8rem' }}>
-                                Bu adrese MON göndererek ajanınıza bütçe yükleyebilirsiniz.
-                                Ajan bu cüzdanı arena giriş ücretleri ve savaş işlemleri için kullanacak.
+                                Send MON to this address to fund your agent.
+                                The agent will use this wallet for arena entry fees and battle transactions.
                             </p>
                             <button
                                 onClick={() => navigator.clipboard.writeText(confirmedAgent.agentWalletAddress)}
                                 className="mc-btn mc-btn-secondary"
                                 style={{ marginTop: '0.75rem', fontSize: '0.8rem', padding: '0.4rem 1rem' }}
                             >
-                                📋 Adresi Kopyala
+                                📋 Copy Address
                             </button>
                         </div>
 
@@ -501,8 +530,8 @@ function CreateAgentPage() {
 
                         <div style={{ textAlign: 'center', marginTop: '1rem' }}>
                             <p className="mc-text-secondary">
-                                Şimdi "Ajanlarım" sayfasından ajanınızı aktifleştirin.
-                                Ajan kendi risk toleransına göre otomatik arena seçecek.
+                                Now go to "My Agents" page to activate your agent.
+                                The agent will automatically select arenas based on its risk tolerance.
                             </p>
                         </div>
                     </div>
@@ -512,7 +541,7 @@ function CreateAgentPage() {
                         className="mc-btn mc-btn-secondary"
                         style={{ width: '100%', marginTop: '1rem' }}
                     >
-                        Yeni Ajan Oluştur
+                        Create New Agent
                     </button>
                 </div>
             )}
@@ -521,9 +550,10 @@ function CreateAgentPage() {
 }
 
 // Arenas Page — Spectate Only (agents auto-select arenas)
-function ArenasPage() {
+function ArenasPage({ onNavigate }) {
     const { isConnected } = useAccount()
     const [arenas, setArenas] = useState([])
+    const [gameTypeFilter, setGameTypeFilter] = useState('all') // 'all' | 'battle' | 'rps'
 
     useEffect(() => {
         const fetchArenas = () => {
@@ -533,76 +563,191 @@ function ArenasPage() {
                 .catch(() => { })
         }
         fetchArenas()
-        const interval = setInterval(fetchArenas, 5000) // refresh every 5s
+        const interval = setInterval(fetchArenas, 3000) // refresh every 3s
         return () => clearInterval(interval)
     }, [])
 
+    // Filter arenas by game type
+    const filteredArenas = gameTypeFilter === 'all'
+        ? arenas
+        : arenas.filter(a => a.gameType === gameTypeFilter)
+
+    // Sort: in_progress first, then lobby, then open
+    const sortedArenas = [...filteredArenas].sort((a, b) => {
+        const order = { in_progress: 0, lobby: 1, open: 2, completed: 3 }
+        return (order[a.status] ?? 9) - (order[b.status] ?? 9)
+    })
+
+    const statusBadge = (status, gameType) => {
+        const configs = {
+            in_progress: { bg: 'rgba(239,68,68,0.2)', color: '#ef4444', icon: '🔴', label: gameType === 'rps' ? 'RPS In Progress' : 'In Battle' },
+            lobby: { bg: 'rgba(245,158,11,0.2)', color: '#f59e0b', icon: '⏳', label: 'Lobby' },
+            open: { bg: 'rgba(34,197,94,0.2)', color: '#22c55e', icon: '🟢', label: 'Waiting' },
+            completed: { bg: 'rgba(107,114,128,0.2)', color: '#6b7280', icon: '✅', label: 'Completed' },
+        }
+        const c = configs[status] || configs.open
+        return (
+            <span style={{
+                padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
+                background: c.bg, color: c.color, display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+            }}>
+                {c.icon} {c.label}
+            </span>
+        )
+    }
+
+    const inProgressCount = arenas.filter(a => a.status === 'in_progress').length
+    const lobbyCount = arenas.filter(a => a.status === 'lobby').length
+    const openCount = arenas.filter(a => a.status === 'open').length
+
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '1rem' }}>
-            <h1 className="mc-title" style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>🏟️ Arenalar</h1>
-            <p className="mc-text-secondary" style={{ marginBottom: '2rem' }}>
-                Ajanlar risk toleranslarına göre otomatik arena seçer. Buradan sadece izleyebilirsiniz.
+            <h1 className="mc-title" style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>🏟️ Live Arenas</h1>
+            <p className="mc-text-secondary" style={{ marginBottom: '1rem' }}>
+                Real-time arena status. Agents autonomously join and battle.
             </p>
 
-            {/* Tier Arena Overview */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
-                {TIER_ARENAS.map(arena => {
-                    // Find active backend arenas for this tier
-                    const liveArenas = arenas.filter(a => 
-                        a.name?.includes(arena.name?.split(' ').pop()) || a.tier === arena.tier
-                    )
-                    const activePlayers = liveArenas.reduce((sum, a) => sum + (a.agentCount || 0), 0)
-                    const totalPool = liveArenas.reduce((sum, a) => sum + (a.prizePool || 0), 0)
-                    const tierBadgeColor = arena.tier === 'gold' ? '#000' : arena.tier === 'silver' ? '#000' : '#fff'
-                    
+            {/* Stats Bar */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: '#ef4444', fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '1.25rem' }}>{inProgressCount}</span>
+                    <span className="mc-text-muted" style={{ fontSize: '0.8rem' }}>In Battle</span>
+                </div>
+                <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '8px', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: '#f59e0b', fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '1.25rem' }}>{lobbyCount}</span>
+                    <span className="mc-text-muted" style={{ fontSize: '0.8rem' }}>In Lobby</span>
+                </div>
+                <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: '#22c55e', fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '1.25rem' }}>{openCount}</span>
+                    <span className="mc-text-muted" style={{ fontSize: '0.8rem' }}>Waiting</span>
+                </div>
+            </div>
+
+            {/* Game Type Filter Tabs */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                {[
+                    { key: 'all', label: '🎯 All' },
+                    { key: 'battle', label: '⚔️ Battle' },
+                    { key: 'rps', label: '✊ RPS' },
+                ].map(tab => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setGameTypeFilter(tab.key)}
+                        style={{
+                            padding: '0.5rem 1.25rem',
+                            borderRadius: 'var(--border-radius-sm)',
+                            border: gameTypeFilter === tab.key ? '1px solid var(--accent-orange)' : '1px solid var(--border-primary)',
+                            background: gameTypeFilter === tab.key ? 'var(--accent-orange-dim)' : 'transparent',
+                            color: gameTypeFilter === tab.key ? 'var(--accent-orange)' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            fontWeight: gameTypeFilter === tab.key ? 700 : 400,
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                        }}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Arena Cards Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
+                {sortedArenas.map(arena => {
+                    const tierColors = { bronze: '#CD7F32', silver: '#C0C0C0', gold: '#FFD700', platinum: '#E5E4E2', diamond: '#B9F2FF' }
+                    const tierColor = tierColors[arena.tier] || 'var(--accent-blue)'
+                    const isLive = arena.status === 'in_progress'
+                    const isLobby = arena.status === 'lobby'
+
                     return (
-                        <div key={arena.id} className="agent-card" style={{
-                            padding: '2rem',
-                            borderTop: `3px solid ${arena.color}`,
-                            textAlign: 'center',
+                        <div key={arena.arenaId} className="agent-card" style={{
+                            padding: '1.25rem',
+                            borderTop: `3px solid ${isLive ? '#ef4444' : tierColor}`,
                             position: 'relative',
+                            animation: isLive ? 'pulse 2s ease-in-out infinite' : 'none',
                         }}>
-                            <span style={{
-                                position: 'absolute', top: '0.75rem', right: '0.75rem',
-                                background: arena.color, color: tierBadgeColor,
-                                padding: '0.2rem 0.65rem', borderRadius: '6px',
-                                fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase',
-                            }}>
-                                {arena.tier}
-                            </span>
+                            {/* Top Row: Status + Tier */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                {statusBadge(arena.status, arena.gameType)}
+                                <span style={{
+                                    background: tierColor, color: arena.tier === 'silver' || arena.tier === 'gold' || arena.tier === 'platinum' ? '#000' : '#fff',
+                                    padding: '0.15rem 0.5rem', borderRadius: '4px',
+                                    fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase',
+                                }}>
+                                    {arena.tier || 'custom'}
+                                </span>
+                            </div>
 
-                            <h2 style={{ color: arena.color, marginBottom: '0.5rem', fontWeight: 700, fontSize: '1.25rem' }}>{arena.name}</h2>
-                            <p className="mc-text-secondary" style={{ marginBottom: '1rem' }}>{arena.desc}</p>
+                            {/* Arena Name */}
+                            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                                {arena.gameType === 'rps' ? '✊' : '⚔️'} {arena.name}
+                            </h3>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                                <div>
-                                    <p className="mc-text-muted">Giriş Ücreti</p>
-                                    <p style={{ color: 'var(--accent-green)', fontWeight: 700, fontSize: '1.25rem', fontFamily: 'var(--font-mono)' }}>{arena.entryFee} MON</p>
+                            {/* Agents Progress */}
+                            <div style={{ marginBottom: '0.75rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem' }}>
+                                    <span className="mc-text-muted">Agents</span>
+                                    <span style={{ color: arena.agentCount > 0 ? 'var(--accent-orange)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                                        {arena.agentCount} / {arena.maxAgents}
+                                    </span>
                                 </div>
-                                <div>
-                                    <p className="mc-text-muted">Aktif Oyuncular</p>
-                                    <p style={{ fontWeight: 700, fontSize: '1.25rem', fontFamily: 'var(--font-mono)' }}>
-                                        <span style={{ color: activePlayers > 0 ? 'var(--accent-orange)' : 'var(--text-muted)' }}>{activePlayers}</span>
-                                    </p>
+                                <div style={{ background: 'var(--bg-tertiary)', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                                    <div style={{
+                                        width: `${(arena.agentCount / arena.maxAgents) * 100}%`,
+                                        height: '100%',
+                                        borderRadius: '4px',
+                                        background: isLive ? '#ef4444' : isLobby ? '#f59e0b' : '#22c55e',
+                                        transition: 'width 0.3s ease',
+                                    }} />
                                 </div>
                             </div>
 
-                            <div style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--border-radius-sm)', padding: '1rem', marginBottom: '1.25rem' }}>
-                                <p className="mc-text-muted">Ödül Havuzu</p>
-                                <p style={{ color: 'var(--accent-gold)', fontWeight: 700, fontSize: '1.5rem', fontFamily: 'var(--font-mono)' }}>{totalPool} MON</p>
+                            {/* Agent Names (if any) */}
+                            {arena.agents && arena.agents.length > 0 && (
+                                <div style={{ marginBottom: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                                    {arena.agents.map(a => (
+                                        <span key={a.id} style={{
+                                            padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.65rem',
+                                            background: 'var(--bg-tertiary)', color: 'var(--text-secondary)',
+                                            border: '1px solid var(--border-primary)',
+                                        }}>
+                                            {a.name}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Fee + Prize */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                <div style={{ background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '0.5rem', textAlign: 'center' }}>
+                                    <p className="mc-text-muted" style={{ fontSize: '0.65rem', margin: '0 0 0.15rem' }}>Entry Fee</p>
+                                    <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.9rem', margin: 0 }}>{arena.entryFee} MON</p>
+                                </div>
+                                <div style={{ background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '0.5rem', textAlign: 'center' }}>
+                                    <p className="mc-text-muted" style={{ fontSize: '0.65rem', margin: '0 0 0.15rem' }}>Prize Pool</p>
+                                    <p style={{ color: 'var(--accent-gold)', fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.9rem', margin: 0 }}>{arena.prizePool} MON</p>
+                                </div>
                             </div>
 
-                            {liveArenas.length > 0 ? (
+                            {/* Action Button */}
+                            {isLive ? (
                                 <button
-                                    onClick={() => window.location.hash = '#spectate'}
+                                    onClick={() => onNavigate && onNavigate('spectate')}
                                     className="mc-btn-primary"
-                                    style={{ width: '100%' }}
+                                    style={{ width: '100%', background: '#ef4444', borderColor: '#ef4444' }}
                                 >
-                                    📺 İzle ({liveArenas.length} aktif maç)
+                                    📺 Watch Live
                                 </button>
+                            ) : isLobby ? (
+                                <div style={{ textAlign: 'center', padding: '0.5rem', color: '#f59e0b', fontSize: '0.8rem', fontWeight: 600 }}>
+                                    ⏳ Waiting for more agents... ({arena.agentCount}/{arena.minAgents} min)
+                                </div>
+                            ) : arena.status === 'completed' ? (
+                                <div style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                    ✅ Match completed
+                                </div>
                             ) : (
-                                <div className="mc-text-muted" style={{ padding: '0.75rem', fontSize: '0.85rem' }}>
-                                    Şu an aktif maç yok
+                                <div style={{ textAlign: 'center', padding: '0.5rem', color: '#22c55e', fontSize: '0.8rem' }}>
+                                    🟢 Waiting for agents
                                 </div>
                             )}
                         </div>
@@ -610,46 +755,9 @@ function ArenasPage() {
                 })}
             </div>
 
-            {/* Live Arenas List */}
-            {arenas.length > 0 && (
-                <div style={{ marginTop: '3rem' }}>
-                    <h2 className="mc-title" style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>🔴 Canlı Arenalar</h2>
-                    <div className="mc-card" style={{ padding: 0, overflow: 'hidden' }}>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Arena</th>
-                                    <th style={{ textAlign: 'center' }}>Durum</th>
-                                    <th style={{ textAlign: 'center' }}>Oyuncular</th>
-                                    <th style={{ textAlign: 'center' }}>Ödül Havuzu</th>
-                                    <th style={{ textAlign: 'center' }}>İşlem</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {arenas.map(a => (
-                                    <tr key={a.arenaId}>
-                                        <td style={{ fontWeight: 600 }}>{a.name || a.arenaId}</td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <span style={{
-                                                padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem',
-                                                background: a.status === 'in_progress' ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)',
-                                                color: a.status === 'in_progress' ? '#ef4444' : '#22c55e'
-                                            }}>
-                                                {a.status === 'in_progress' ? '⚔️ Savaş' : a.status === 'lobby' ? '⏳ Lobi' : '🟢 Açık'}
-                                            </span>
-                                        </td>
-                                        <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}>{a.agentCount || 0}</td>
-                                        <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--accent-gold)' }}>{a.prizePool || 0} MON</td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <button className="mc-btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}>
-                                                📺 İzle
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+            {sortedArenas.length === 0 && (
+                <div className="mc-card" style={{ textAlign: 'center', padding: '3rem' }}>
+                    <p className="mc-text-muted">No arenas found. The server might not be running.</p>
                 </div>
             )}
         </div>
@@ -669,16 +777,16 @@ function LeaderboardPage() {
             .then(data => {
                 if (data.ok) setEntries(data.leaderboard)
             })
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setLoading(false))
     }, [sortBy])
 
     const sortOptions = [
         { key: 'elo', label: '🏆 ELO', icon: '🏆' },
-        { key: 'wins', label: '⚔️ Galibiyet', icon: '⚔️' },
-        { key: 'earnings', label: '💰 Kazanç', icon: '💰' },
-        { key: 'betrayals', label: '🗡️ İhanet', icon: '🗡️' },
-        { key: 'streak', label: '🔥 Seri', icon: '🔥' },
+        { key: 'wins', label: '⚔️ Wins', icon: '⚔️' },
+        { key: 'earnings', label: '💰 Earnings', icon: '💰' },
+        { key: 'betrayals', label: '🗡️ Betrayals', icon: '🗡️' },
+        { key: 'streak', label: '🔥 Streak', icon: '🔥' },
     ]
 
     const getRankBadge = (index) => {
@@ -698,7 +806,7 @@ function LeaderboardPage() {
     return (
         <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '1rem' }}>
             <h1 className="mc-title" style={{ fontSize: '1.75rem', marginBottom: '2rem' }}>
-                🏆 Sıralama Tablosu
+                🏆 Leaderboard
             </h1>
 
             {/* Sort Tabs */}
@@ -720,7 +828,7 @@ function LeaderboardPage() {
             ) : entries.length === 0 ? (
                 <div className="mc-card" style={{ padding: '3rem', textAlign: 'center' }}>
                     <p className="mc-text-secondary" style={{ fontSize: '1.1rem' }}>
-                        Henüz sıralama verisi yok. Arenalarda savaşarak sıralamaya gir!
+                        No ranking data yet. Battle in the arenas to climb the leaderboard!
                     </p>
                 </div>
             ) : (
@@ -728,13 +836,13 @@ function LeaderboardPage() {
                     <table>
                         <thead>
                             <tr>
-                                <th style={{ textAlign: 'center', width: '60px' }}>Sıra</th>
-                                <th>Ajan</th>
+                                <th style={{ textAlign: 'center', width: '60px' }}>Rank</th>
+                                <th>Agent</th>
                                 <th style={{ textAlign: 'center' }}>ELO</th>
-                                <th style={{ textAlign: 'center' }}>G/M</th>
-                                <th style={{ textAlign: 'center' }}>Kazanç</th>
-                                <th style={{ textAlign: 'center' }}>İhanet</th>
-                                <th style={{ textAlign: 'center' }}>Seri</th>
+                                <th style={{ textAlign: 'center' }}>W/L</th>
+                                <th style={{ textAlign: 'center' }}>Earnings</th>
+                                <th style={{ textAlign: 'center' }}>Betrayals</th>
+                                <th style={{ textAlign: 'center' }}>Streak</th>
                             </tr>
                         </thead>
                         <tbody>

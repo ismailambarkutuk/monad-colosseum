@@ -32,17 +32,17 @@ export class ErrorBoundary extends React.Component {
                 }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>😔</div>
                     <h2 style={{ color: 'var(--accent-red)', margin: '0 0 0.75rem', fontSize: '1.25rem' }}>
-                        Bir hata oluştu
+                        An error occurred
                     </h2>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                        {this.state.error?.message || 'Beklenmedik bir hata meydana geldi.'}
+                        {this.state.error?.message || 'An unexpected error occurred.'}
                     </p>
                     <button
                         onClick={() => window.location.reload()}
                         className="mc-btn-primary"
                         style={{ padding: '0.75rem 1.5rem' }}
                     >
-                        🔄 Sayfayı Yenile
+                        🔄 Reload Page
                     </button>
                 </div>
             );

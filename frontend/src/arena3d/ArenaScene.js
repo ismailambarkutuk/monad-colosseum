@@ -13,7 +13,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import gsap from 'gsap';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ const VignetteShader = {
 
 const ARENA_RADIUS = 42;
 const TIER_COUNT = 5;
-const ARCH_COLS = 48;
+const ARCH_COLS = 24;
 
 export class ArenaScene {
   constructor(canvas) {
@@ -45,7 +45,7 @@ export class ArenaScene {
     this.torches = [];
     this.clock = new THREE.Clock();
     this.shakeIntensity = 0;
-    this.loadedModels = {};
+    this.frameCount = 0;
 
     this._initRenderer();
     this._initScene();
@@ -58,7 +58,6 @@ export class ArenaScene {
     this._buildTorches();
     this._createEnvironment();
     this._initPostProcessing();
-    this._loadModels();
     this._animate();
 
     window.addEventListener('resize', () => this._onResize());
@@ -74,13 +73,20 @@ export class ArenaScene {
       antialias: false,
       powerPreference: 'high-performance',
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.4;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Initial size from container
+    const parent = this.canvas.parentElement;
+    if (parent) {
+      this.renderer.setSize(parent.clientWidth, parent.clientHeight);
+    } else {
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
   }
 
   _initScene() {
@@ -125,7 +131,7 @@ export class ArenaScene {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(size.x, size.y), 0.25, 0.4, 0.9,
+      new THREE.Vector2(size.x / 2, size.y / 2), 0.5, 0.4, 0.85,
     );
     this.composer.addPass(this.bloomPass);
 
@@ -154,7 +160,7 @@ export class ArenaScene {
     const sun = new THREE.DirectionalLight(0xfff0d0, 1.8);
     sun.position.set(-20, 50, 15);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.far = 100;
     sun.shadow.camera.left = -30;
     sun.shadow.camera.right = 30;
@@ -170,7 +176,7 @@ export class ArenaScene {
     // Center crystal glow (kept for fantasy element)
     this.centerLight = new THREE.PointLight(0x8b5cf6, 5, 50, 1.5);
     this.centerLight.position.set(0, 6, 0);
-    this.centerLight.castShadow = true;
+    this.centerLight.castShadow = false;
     this.scene.add(this.centerLight);
 
     // Warm fill from opposite side
@@ -185,84 +191,14 @@ export class ArenaScene {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // MODEL LOADING (GLB from Khronos Sample Assets)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  _loadModels() {
-    this.gltfLoader = new GLTFLoader();
-
-    this.gltfLoader.load('/models/Lantern.glb', (gltf) => {
-      this.loadedModels.lantern = gltf.scene;
-      this._placeLanterns();
-    }, undefined, () => {});
-
-    this.gltfLoader.load('/models/DamagedHelmet.glb', (gltf) => {
-      this.loadedModels.helmet = gltf.scene;
-      this._placeHelmetTrophies();
-    }, undefined, () => {});
-
-    this.gltfLoader.load('/models/ScatteringSkull.glb', (gltf) => {
-      this.loadedModels.skull = gltf.scene;
-      this._placeSkullDecorations();
-    }, undefined, () => {});
-  }
-
-  _placeLanterns() {
-    const base = this.loadedModels.lantern;
-    if (!base) return;
-    const lanternCount = Math.max(12, Math.round(ARENA_RADIUS * 0.5));
-    for (let i = 0; i < lanternCount; i++) {
-      const angle = (Math.PI * 2 / lanternCount) * i;
-      const r = ARENA_RADIUS + 1.5;
-      const lantern = base.clone();
-      lantern.scale.setScalar(0.04);
-      lantern.position.set(r * Math.cos(angle), 6.5, r * Math.sin(angle));
-      lantern.rotation.y = -angle + Math.PI;
-      lantern.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-      this.scene.add(lantern);
-    }
-  }
-
-  _placeHelmetTrophies() {
-    const base = this.loadedModels.helmet;
-    if (!base) return;
-    const helmetCount = Math.max(10, Math.round(ARENA_RADIUS * 0.35));
-    for (let i = 0; i < helmetCount; i++) {
-      const angle = (Math.PI * 2 / helmetCount) * i;
-      const r = ARENA_RADIUS + 0.3;
-      const helmet = base.clone();
-      helmet.scale.setScalar(0.8);
-      helmet.position.set(r * Math.cos(angle), 7.8, r * Math.sin(angle));
-      helmet.rotation.y = -angle;
-      helmet.traverse((c) => { if (c.isMesh) c.castShadow = true; });
-      this.scene.add(helmet);
-    }
-  }
-
-  _placeSkullDecorations() {
-    const base = this.loadedModels.skull;
-    if (!base) return;
-    const skullCount = Math.max(16, Math.round(ARENA_RADIUS * 0.7));
-    for (let i = 0; i < skullCount; i++) {
-      const angle = (Math.PI * 2 / skullCount) * i;
-      const r = ARENA_RADIUS - 0.5;
-      const skull = base.clone();
-      skull.scale.setScalar(0.015);
-      skull.position.set(r * Math.cos(angle), 2.2, r * Math.sin(angle));
-      skull.rotation.y = -angle + Math.PI;
-      skull.traverse((c) => { if (c.isMesh) c.castShadow = true; });
-      this.scene.add(skull);
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // ROMAN COLOSSEUM CONSTRUCTION
   // ═══════════════════════════════════════════════════════════════════════════
 
   _buildColosseum() {
     // Real travertine / sandstone palette
+    const stoneTex = this._createStoneTexture();
     const stoneMat = new THREE.MeshPhysicalMaterial({
-      color: 0xd4c4a0, roughness: 0.8, metalness: 0.02, clearcoat: 0.05,
+      map: stoneTex, color: 0xd4c4a0, roughness: 0.8, metalness: 0.02, clearcoat: 0.05,
     });
     const darkStoneMat = new THREE.MeshPhysicalMaterial({
       color: 0xbaa882, roughness: 0.85, metalness: 0.02,
@@ -307,6 +243,17 @@ export class ArenaScene {
 
   _buildSeatingTiers(stoneMat, darkStoneMat) {
     const baseR = ARENA_RADIUS + 0.5;
+
+    // Pre-count total seats for instancing
+    let totalSeats = 0;
+    for (let tier = 0; tier < TIER_COUNT; tier++) totalSeats += Math.floor(24 + tier * 4);
+
+    const seatGeo = new THREE.BoxGeometry(0.7, 0.4, 0.6);
+    const seatMesh = new THREE.InstancedMesh(seatGeo, darkStoneMat, totalSeats);
+    seatMesh.receiveShadow = true;
+    const dummy = new THREE.Object3D();
+    let seatIdx = 0;
+
     for (let tier = 0; tier < TIER_COUNT; tier++) {
       const innerR = baseR + tier * 3;
       const outerR = innerR + 2.8;
@@ -314,30 +261,24 @@ export class ArenaScene {
       const depth = 2.0;
       const mat = tier % 2 === 0 ? stoneMat : darkStoneMat;
 
-      const tierGeo = new THREE.CylinderGeometry(outerR, innerR, depth, 64, 1, true);
+      const tierGeo = new THREE.CylinderGeometry(outerR, innerR, depth, 48, 1, true);
       const tierMesh = new THREE.Mesh(tierGeo, mat);
       tierMesh.position.y = height - depth / 2 + 3;
       tierMesh.receiveShadow = true;
       this.scene.add(tierMesh);
 
-      const stepGeo = new THREE.TorusGeometry((innerR + outerR) / 2, 0.15, 4, 64);
-      stepGeo.rotateX(Math.PI / 2);
-      const step = new THREE.Mesh(stepGeo, stoneMat);
-      step.position.y = height + 3.05;
-      this.scene.add(step);
-
       const seatCount = Math.floor(24 + tier * 4);
       for (let s = 0; s < seatCount; s++) {
         const angle = (Math.PI * 2 / seatCount) * s;
         const sR = (innerR + outerR) / 2;
-        const seatGeo = new THREE.BoxGeometry(0.7, 0.4, 0.6);
-        const seat = new THREE.Mesh(seatGeo, darkStoneMat);
-        seat.position.set(sR * Math.cos(angle), height + 3.2, sR * Math.sin(angle));
-        seat.rotation.y = -angle;
-        seat.receiveShadow = true;
-        this.scene.add(seat);
+        dummy.position.set(sR * Math.cos(angle), height + 3.2, sR * Math.sin(angle));
+        dummy.rotation.set(0, -angle, 0);
+        dummy.updateMatrix();
+        seatMesh.setMatrixAt(seatIdx++, dummy.matrix);
       }
     }
+    seatMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(seatMesh);
   }
 
   _buildArchedGalleries(stoneMat, trimMat) {
@@ -381,7 +322,7 @@ export class ArenaScene {
   }
 
   _buildColumns(stoneMat, trimMat) {
-    const count = 24;
+    const count = 16;
     const R = ARENA_RADIUS + 1;
     const colH = 14;
 
@@ -399,14 +340,14 @@ export class ArenaScene {
       g.add(base);
 
       // Shaft
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, colH, 12), stoneMat);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, colH, 8), stoneMat);
       shaft.position.y = colH / 2 + 0.6;
       shaft.castShadow = true;
       g.add(shaft);
 
       // Fluting
-      for (let f = 0; f < 8; f++) {
-        const fa = (Math.PI * 2 / 8) * f;
+      for (let f = 0; f < 4; f++) {
+        const fa = (Math.PI * 2 / 4) * f;
         const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, colH - 0.5, 4), stoneMat);
         fl.position.set(0.32 * Math.cos(fa), colH / 2 + 0.6, 0.32 * Math.sin(fa));
         g.add(fl);
@@ -438,7 +379,7 @@ export class ArenaScene {
     cornice.castShadow = true;
     this.scene.add(cornice);
 
-    const cCount = 48;
+    const cCount = 24;
     for (let i = 0; i < cCount; i++) {
       const angle = (Math.PI * 2 / cCount) * i;
       const c = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.5), trimMat);
@@ -449,7 +390,7 @@ export class ArenaScene {
   }
 
   _buildRuins(stoneMat) {
-    const ruinAngles = [0.5, 1.3, 2.1, 2.9, 3.7, 4.5, 5.3];
+    const ruinAngles = [0.5, 2.1, 3.7, 5.3];
     const R = ARENA_RADIUS + 8;
     for (const a of ruinAngles) {
       const g = new THREE.Group();
@@ -544,14 +485,108 @@ export class ArenaScene {
   // ARENA FLOOR
   // ═══════════════════════════════════════════════════════════════════════════
 
+  _createSandTexture() {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    // Base sand color
+    ctx.fillStyle = '#d4b87a';
+    ctx.fillRect(0, 0, size, size);
+    // Add noise grain for sand effect
+    const imageData = ctx.getImageData(0, 0, size, size);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (Math.random() - 0.5) * 40;
+      data[i] = Math.max(0, Math.min(255, data[i] + noise));
+      data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise * 0.8));
+      data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise * 0.5));
+    }
+    ctx.putImageData(imageData, 0, 0);
+    // Add subtle darker patches
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * size, y = Math.random() * size;
+      const r = 10 + Math.random() * 40;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(160, 130, 80, ${0.05 + Math.random() * 0.08})`;
+      ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(4, 4);
+    return tex;
+  }
+
+  _createStoneTexture() {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    // Base stone color
+    ctx.fillStyle = '#d4c4a0';
+    ctx.fillRect(0, 0, size, size);
+
+    // Noise
+    const imageData = ctx.getImageData(0, 0, size, size);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (Math.random() - 0.5) * 30;
+      data[i] = Math.max(0, Math.min(255, data[i] + noise));
+      data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+      data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    // Bricks pattern
+    ctx.strokeStyle = 'rgba(100, 90, 70, 0.4)';
+    ctx.lineWidth = 2;
+    const brickH = 64;
+    const brickW = 128;
+    for (let y = 0; y < size; y += brickH) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(size, y);
+      ctx.stroke();
+      const offset = (y / brickH) % 2 === 0 ? 0 : brickW / 2;
+      for (let x = -brickW; x < size; x += brickW) {
+        ctx.beginPath();
+        ctx.moveTo(x + offset, y);
+        ctx.lineTo(x + offset, y + brickH);
+        ctx.stroke();
+      }
+    }
+
+    // Grunge spots
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * size, y = Math.random() * size;
+      const r = 5 + Math.random() * 20;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(80, 70, 60, ${0.05 + Math.random() * 0.1})`;
+      ctx.fill();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 2);
+    return tex;
+  }
+
   _buildFloor() {
     const R = ARENA_RADIUS;
 
-    // Sandy arena floor – warm golden sand
-    const floorGeo = new THREE.CircleGeometry(R, 64);
+    // Generate procedural sand texture via canvas
+    const sandTex = this._createSandTexture();
+
+    // Sandy arena floor – warm golden sand with texture
+    const floorGeo = new THREE.CircleGeometry(R, 48);
     floorGeo.rotateX(-Math.PI / 2);
     const floor = new THREE.Mesh(floorGeo, new THREE.MeshPhysicalMaterial({
-      color: 0xd4b87a, roughness: 0.92, metalness: 0.0, clearcoat: 0.02,
+      map: sandTex, color: 0xd4b87a, roughness: 0.92, metalness: 0.0, clearcoat: 0.02,
     }));
     floor.position.y = -0.01;
     floor.receiveShadow = true;
@@ -581,8 +616,8 @@ export class ArenaScene {
     }
 
     // Floor runes
-    for (let i = 0; i < 16; i++) {
-      const angle = (Math.PI / 8) * i;
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI / 4) * i;
       const x = (R * 0.45) * Math.cos(angle), z = (R * 0.45) * Math.sin(angle);
 
       const runeGeo = new THREE.TorusGeometry(0.5, 0.03, 4, 16);
@@ -661,7 +696,7 @@ export class ArenaScene {
 
   _buildTorches() {
     const R = ARENA_RADIUS - 0.5;
-    const torchCount = Math.max(16, Math.round(ARENA_RADIUS * 0.8));
+    const torchCount = 8;
     for (let i = 0; i < torchCount; i++) {
       const angle = (Math.PI * 2 / torchCount) * i;
       const g = new THREE.Group();
@@ -687,7 +722,7 @@ export class ArenaScene {
       g.add(core);
 
       const sprites = [];
-      for (let s = 0; s < 3; s++) {
+      for (let s = 0; s < 2; s++) {
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({
           color: [0xff6622, 0xff9944, 0xffcc66][s],
           transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
@@ -705,7 +740,7 @@ export class ArenaScene {
   }
 
   _createFireParticles(parent, pos) {
-    const count = 12;
+    const count = 6;
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       positions[i * 3] = pos.x + (Math.random() - 0.5) * 0.1;
@@ -781,7 +816,7 @@ export class ArenaScene {
   }
 
   _createDust() {
-    const count = 300;
+    const count = 100;
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 40;
@@ -797,7 +832,7 @@ export class ArenaScene {
   }
 
   _createEmbers() {
-    const count = 100;
+    const count = 40;
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 35;
@@ -815,7 +850,7 @@ export class ArenaScene {
 
   _createGroundFog() {
     // Warm sand dust haze on ground
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 15; i++) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({
         color: 0xddcc99, transparent: true, opacity: 0.04,
       }));
@@ -1306,6 +1341,8 @@ export class ArenaScene {
     requestAnimationFrame(() => this._animate());
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.getElapsedTime();
+    this.frameCount++;
+    const updateParticles = this.frameCount % 2 === 0;
 
     if (this.controls) this.controls.update();
 
@@ -1315,7 +1352,7 @@ export class ArenaScene {
       this.camera.position.y += (Math.random() - 0.5) * this.shakeIntensity;
       this.shakeIntensity *= 0.88;
       if (this.bloomPass) this.bloomPass.strength = 0.7 + this.shakeIntensity * 2;
-    } else if (this.bloomPass) this.bloomPass.strength = 0.7;
+    } else if (this.bloomPass) this.bloomPass.strength = 0.5;
 
     // Crystal
     if (this.crystal) { this.crystal.position.y = 5.0 + Math.sin(t * 1.2) * 0.5; this.crystal.rotation.y = t * 0.7; this.crystal.rotation.x = Math.sin(t * 0.4) * 0.25; this.crystal.material.emissiveIntensity = 2.0 + Math.sin(t * 3) * 0.8; }
@@ -1324,27 +1361,28 @@ export class ArenaScene {
     if (this.energyOrbs) for (const orb of this.energyOrbs) { const a = t * 1.5 + orb.phase; orb.mesh.position.set(2.5 * Math.cos(a), 5.0 + Math.sin(t * 1.2) * 0.5 + Math.sin(a * 2) * 0.4, 2.5 * Math.sin(a)); orb.mesh.material.emissiveIntensity = 2.5 + Math.sin(t * 5 + orb.phase) * 1.5; }
     if (this.centerLight) this.centerLight.intensity = 4.0 + Math.sin(t * 2.5) * 2.0;
 
-    // Torches
-    for (const torch of this.torches) {
-      torch.light.intensity = 2.5 + Math.sin(t * 12 + Math.random() * 3) * 0.8 + Math.sin(t * 7.3) * 0.3;
-      if (torch.core) { torch.core.material.emissiveIntensity = 3.0 + Math.sin(t * 10) * 1.5; torch.core.scale.setScalar(0.9 + Math.sin(t * 8) * 0.15); }
-      if (torch.sprites) for (let s = 0; s < torch.sprites.length; s++) { torch.sprites[s].scale.y = 0.8 + Math.sin(t * 6 + s * 2) * 0.2; torch.sprites[s].material.opacity = 0.5 + Math.sin(t * 10 + s * 1.5) * 0.2; }
-      if (torch.particles) {
-        const pos = torch.particles.geometry.attributes.position;
-        for (let i = 0; i < pos.count; i++) {
-          let y = pos.getY(i) + dt * (2.0 + Math.random() * 1.5);
-          if (y > pos.getY(i) + 0.8) { y = 0; pos.setX(i, (Math.random() - 0.5) * 0.2); pos.setZ(i, (Math.random() - 0.5) * 0.2); }
-          pos.setY(i, y);
+    // Torches (throttled)
+    if (updateParticles) {
+      for (const torch of this.torches) {
+        torch.light.intensity = 2.5 + Math.sin(t * 12 + Math.random() * 3) * 0.8 + Math.sin(t * 7.3) * 0.3;
+        if (torch.core) { torch.core.material.emissiveIntensity = 3.0 + Math.sin(t * 10) * 1.5; torch.core.scale.setScalar(0.9 + Math.sin(t * 8) * 0.15); }
+        if (torch.sprites) for (let s = 0; s < torch.sprites.length; s++) { torch.sprites[s].scale.y = 0.8 + Math.sin(t * 6 + s * 2) * 0.2; torch.sprites[s].material.opacity = 0.5 + Math.sin(t * 10 + s * 1.5) * 0.2; }
+        if (torch.particles) {
+          const pos = torch.particles.geometry.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            let y = pos.getY(i) + dt * (2.0 + Math.random() * 1.5);
+            if (y > pos.getY(i) + 0.8) { y = 0; pos.setX(i, (Math.random() - 0.5) * 0.2); pos.setZ(i, (Math.random() - 0.5) * 0.2); }
+            pos.setY(i, y);
+          }
+          pos.needsUpdate = true;
         }
-        pos.needsUpdate = true;
       }
-    }
 
-    // Dust
-    if (this.dustParticles) { const pos = this.dustParticles.geometry.attributes.position; for (let i = 0; i < pos.count; i++) { pos.setY(i, pos.getY(i) + dt * 0.06); pos.setX(i, pos.getX(i) + Math.sin(t * 0.5 + i * 0.1) * dt * 0.015); if (pos.getY(i) > 15) pos.setY(i, 0); } pos.needsUpdate = true; }
+      if (updateParticles && this.dustParticles) { const pos = this.dustParticles.geometry.attributes.position; for (let i = 0; i < pos.count; i++) { pos.setY(i, pos.getY(i) + dt * 0.12); pos.setX(i, pos.getX(i) + Math.sin(t * 0.5 + i * 0.1) * dt * 0.03); if (pos.getY(i) > 15) pos.setY(i, 0); } pos.needsUpdate = true; }
 
-    // Embers
-    if (this.embers) { const pos = this.embers.geometry.attributes.position; for (let i = 0; i < pos.count; i++) { pos.setY(i, pos.getY(i) + dt * 0.6); pos.setX(i, pos.getX(i) + Math.sin(t * 2 + i * 0.5) * dt * 0.12); pos.setZ(i, pos.getZ(i) + Math.cos(t * 1.5 + i * 0.3) * dt * 0.08); if (pos.getY(i) > 25) { pos.setY(i, 0); pos.setX(i, (Math.random() - 0.5) * 35); pos.setZ(i, (Math.random() - 0.5) * 35); } } pos.needsUpdate = true; }
+      // Embers (throttled)
+      if (updateParticles && this.embers) { const pos = this.embers.geometry.attributes.position; for (let i = 0; i < pos.count; i++) { pos.setY(i, pos.getY(i) + dt * 1.2); pos.setX(i, pos.getX(i) + Math.sin(t * 2 + i * 0.5) * dt * 0.24); pos.setZ(i, pos.getZ(i) + Math.cos(t * 1.5 + i * 0.3) * dt * 0.16); if (pos.getY(i) > 25) { pos.setY(i, 0); pos.setX(i, (Math.random() - 0.5) * 35); pos.setZ(i, (Math.random() - 0.5) * 35); } } pos.needsUpdate = true; }
+    } // end updateParticles throttle
 
     // Warriors
     for (const [, m] of this.agentMeshes) {
@@ -1374,7 +1412,10 @@ export class ArenaScene {
   }
 
   _onResize() {
-    const w = window.innerWidth, h = window.innerHeight;
+    const parent = this.canvas.parentElement;
+    if (!parent) return;
+    const w = parent.clientWidth;
+    const h = parent.clientHeight;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);

@@ -1,17 +1,19 @@
 # Dependencies
 node_modules/
 
-# Hardhat
+# Hardhat / Foundry
 cache/
 artifacts/
 typechain-types/
 coverage/
 coverage.json
+out/
 
 # Environment
 .env
 .env.*
 !.env.example
+!backend/.env.example
 
 # Frontend (Vite/React)
 frontend/dist/
@@ -23,10 +25,37 @@ frontend/.env.*.local
 # Backend
 backend/node_modules/
 backend/.env
+backend/data/
 
-# Misc
+# IDE & Agent configs
 .DS_Store
 Thumbs.db
 *.log
 .vscode/
 .idea/
+.cursor/
+.agents/
+
+# Internal dev docs (not for collaborators)
+OPUS_PROMPTS.md
+OPUS_UPGRADE_PLAN.md
+TODO_FULL.md
+
+# Backup / temp folders
+contracts-backup/
+gladiator-deploy/
+
+# Old/misplaced files
+frontend/arena3d.html
+frontend/Spectate.css
+frontend/Spectate.tsx
+frontend/public/test.html
+
+# Unused TypeScript files
+backend/AgentBrain.ts
+backend/aa-utils.ts
+
+# Internal scripts
+scripts/opus-upgrade.js
+docs/DEMO_SCRIPT.md
+docs/TESTING_CHECKLIST.md

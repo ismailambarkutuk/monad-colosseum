@@ -62,7 +62,10 @@ const EVENT_TYPES = {
     8: 'AGENT_DEATH',
     9: 'CHAMPION_CROWNED',
     10: 'BUFF_RECEIVED',
-    11: 'DRAMATIC_MOMENT'
+    11: 'DRAMATIC_MOMENT',
+    12: 'RPS_ROUND',
+    13: 'RPS_MATCH_END',
+    14: 'AI_REASONING'
 };
 
 const EVENT_ICONS = {
@@ -77,7 +80,16 @@ const EVENT_ICONS = {
     'AGENT_DEATH': '☠️',
     'CHAMPION_CROWNED': '👑',
     'BUFF_RECEIVED': '✨',
-    'DRAMATIC_MOMENT': '🎭'
+    'DRAMATIC_MOMENT': '🎭',
+    'RPS_ROUND': '✊',
+    'RPS_MATCH_END': '🏆',
+    'AI_REASONING': '🧠'
+};
+
+const RPS_MOVE_ICONS = {
+    rock: '🪨',
+    paper: '📄',
+    scissors: '✂️',
 };
 
 const BUFF_TYPES = {
@@ -114,77 +126,47 @@ const DEMO_EVENTS = [
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function Spectate() {
-    const [isConnected, setIsConnected] = useState(false);
-    const [isDemoMode, setIsDemoMode] = useState(true);
-    const [currentRound] = useState({
-        id: 47,
-        participants: DEMO_AGENTS.map(a => a.address),
-        startTime: Date.now() - 60000,
+    const [wsConnected, setWsConnected] = useState(false);
+    const [liveArenas, setLiveArenas] = useState([]);
+    const [selectedArena, setSelectedArena] = useState(null);
+    const [currentRound, setCurrentRound] = useState({
+        id: 0,
+        participants: [],
+        startTime: Date.now(),
         endTime: 0,
-        status: 'IN_PROGRESS',
-        prizePool: '2.5',
+        status: 'WAITING',
+        prizePool: '0',
         winner: ''
     });
-    const [agents, setAgents] = useState(DEMO_AGENTS);
-    const [combatLog, setCombatLog] = useState(DEMO_EVENTS);
+    const [agents, setAgents] = useState([]);
+    const [combatLog, setCombatLog] = useState([]);
     const [activeBuffs, setActiveBuffs] = useState({});
     const [view3D, setView3D] = useState(false);
 
-    // Connect wallet
-    const connectWallet = useCallback(async () => {
-        if (typeof window.ethereum === 'undefined') {
-            alert('Please install MetaMask! Running in demo mode.');
-            return;
-        }
-
-        try {
-            const browserProvider = new ethers.BrowserProvider(window.ethereum);
-            await browserProvider.send('eth_requestAccounts', []);
-            setIsConnected(true);
-            setIsDemoMode(false);
-        } catch (error) {
-            console.error('Failed to connect wallet:', error);
-        }
-    }, []);
-
-    // Simulate live updates in demo mode
+    // Fetch live arenas from API (real data, no mock)
     useEffect(() => {
-        if (!isDemoMode) return;
-
-        const interval = setInterval(() => {
-            // Randomly update agent health
-            setAgents(prev => prev.map(agent => {
-                if (!agent.isAlive) return agent;
-                const change = Math.floor(Math.random() * 50) - 25;
-                const newHealth = Math.max(0, Math.min(agent.maxHealth, agent.health + change));
-                return { ...agent, health: newHealth, isAlive: newHealth > 0 };
-            }));
-
-            // Randomly add new events
-            if (Math.random() > 0.7) {
-                const types = ['ATTACK', 'DEFEND', 'BUFF_RECEIVED'];
-                const type = types[Math.floor(Math.random() * types.length)];
-                const actor = DEMO_AGENTS[Math.floor(Math.random() * DEMO_AGENTS.length)];
-                const target = DEMO_AGENTS[Math.floor(Math.random() * DEMO_AGENTS.length)];
-
-                setCombatLog(prev => [{
-                    type,
-                    primaryActor: actor.address,
-                    secondaryActor: target.address,
-                    value: (Math.random() * 100).toFixed(0),
-                    description: `${actor.address} ${type.toLowerCase()} ${target.address}`,
-                    timestamp: Date.now(),
-                    roundId: 47
-                }, ...prev.slice(0, 19)]);
-            }
-        }, 3000);
-
+        const fetchLiveArenas = () => {
+            fetch(`${BACKEND_URL}/api/arenas`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.ok) {
+                        setLiveArenas(data.arenas);
+                        // Auto-select first in_progress arena if none selected
+                        if (!selectedArena) {
+                            const live = data.arenas.find(a => a.status === 'in_progress');
+                            if (live) setSelectedArena(live.arenaId);
+                        }
+                    }
+                })
+                .catch(() => { });
+        };
+        fetchLiveArenas();
+        const interval = setInterval(fetchLiveArenas, 4000);
         return () => clearInterval(interval);
-    }, [isDemoMode]);
+    }, [selectedArena]);
 
-    // Live WebSocket integration
+    // Always connect WebSocket — real data only
     useEffect(() => {
-        if (isDemoMode) return;
 
         let ws;
         let reconnectTimer;
@@ -194,7 +176,8 @@ export function Spectate() {
 
             ws.onopen = () => {
                 console.log('[WS] Connected to battle server');
-                // Subscribe to all arena events
+                setWsConnected(true);
+                // Subscribe to all arena events (wildcard)
                 ws.send(JSON.stringify({ type: 'subscribe', arenaId: '*' }));
             };
 
@@ -209,6 +192,7 @@ export function Spectate() {
 
             ws.onclose = () => {
                 console.log('[WS] Disconnected, reconnecting in 3s...');
+                setWsConnected(false);
                 reconnectTimer = setTimeout(connect, 3000);
             };
 
@@ -256,7 +240,7 @@ export function Spectate() {
                         primaryActor: a.members[0],
                         secondaryActor: a.members[1],
                         value: '0',
-                        description: `🤝 İttifak kuruldu: ${a.members.join(' & ')}`,
+                        description: `🤝 Alliance formed: ${a.members.join(' & ')}`,
                         timestamp: Date.now(),
                         roundId: 0,
                     }, ...prev].slice(0, 30));
@@ -268,7 +252,7 @@ export function Spectate() {
                         primaryActor: msg.betrayer,
                         secondaryActor: msg.victim,
                         value: '0',
-                        description: `🗡️ ${msg.betrayer} İHANET ETTİ ${msg.victim}'a!`,
+                        description: `🗡️ ${msg.betrayer} BETRAYED ${msg.victim}!`,
                         timestamp: Date.now(),
                         roundId: 0,
                     }, ...prev].slice(0, 30));
@@ -280,10 +264,94 @@ export function Spectate() {
                         primaryActor: msg.result?.winner?.id || '',
                         secondaryActor: '',
                         value: '0',
-                        description: `👑 Maç bitti! Kazanan: ${msg.result?.winner?.id || 'Berabere'}`,
+                        description: `👑 Match over! Winner: ${msg.result?.winner?.id || 'Draw'}`,
                         timestamp: Date.now(),
                         roundId: 0,
                     }, ...prev].slice(0, 30));
+                    break;
+                }
+                case 'rps:round': {
+                    // RPS round result
+                    const moves = msg.moves || {};
+                    const agentIds = Object.keys(moves);
+                    const [id1, id2] = agentIds;
+                    const move1 = moves[id1];
+                    const move2 = moves[id2];
+                    const moveIcon = (m) => RPS_MOVE_ICONS[m] || m;
+                    const winnerText = msg.winner ? `${msg.winner} wins!` : 'Draw!';
+
+                    setCombatLog(prev => [{
+                        type: 'RPS_ROUND',
+                        primaryActor: id1 || '',
+                        secondaryActor: id2 || '',
+                        value: String(msg.round || 0),
+                        description: `✊ Round ${msg.round}: ${id1?.slice(-6)} ${moveIcon(move1)} vs ${moveIcon(move2)} ${id2?.slice(-6)} — ${winnerText}`,
+                        timestamp: Date.now(),
+                        roundId: msg.round,
+                    }, ...prev].slice(0, 30));
+                    break;
+                }
+                case 'agent:reasoning': {
+                    // AI agent thought process — show in combat log
+                    const name = msg.agentName || msg.agentId?.slice(-8) || 'Agent';
+                    const reasoning = msg.reasoning || '';
+                    const action = msg.action || '';
+                    const fallbackTag = msg.isFallback ? ' [fallback]' : '';
+                    setCombatLog(prev => [{
+                        type: 'AI_REASONING',
+                        primaryActor: msg.agentId || '',
+                        secondaryActor: '',
+                        value: action,
+                        description: `🧠 ${name} thinks: "${reasoning}"${fallbackTag}`,
+                        timestamp: Date.now(),
+                        roundId: msg.turn || 0,
+                    }, ...prev].slice(0, 40));
+                    break;
+                }
+                case 'prize:distributed': {
+                    // On-chain prize distribution with tx hashes
+                    const txs = msg.distributions || [];
+                    const prizeEntries = txs
+                        .filter(d => d.type === 'prize_won' || d.type === 'platform_fee')
+                        .map(d => {
+                            const shortHash = d.txHash ? `${d.txHash.slice(0, 10)}...${d.txHash.slice(-6)}` : 'N/A';
+                            const explorerUrl = d.txHash && d.txHash !== 'retained'
+                                ? `https://testnet.monadvision.com/tx/${d.txHash}` : null;
+                            const desc = d.type === 'platform_fee'
+                                ? `🏦 Platform fee: ${d.amount.toFixed(4)} MON (retained)`
+                                : `💰 Prize: ${d.amount.toFixed(4)} MON → ${d.agentName}${explorerUrl ? ` (tx: ${shortHash})` : ''}`;
+                            return {
+                                type: d.type === 'platform_fee' ? 'DRAMATIC_MOMENT' : 'CHAMPION_CROWNED',
+                                primaryActor: d.agentId || '',
+                                secondaryActor: '',
+                                value: String(d.amount || 0),
+                                description: desc,
+                                timestamp: Date.now(),
+                                roundId: 0,
+                                txHash: d.txHash,
+                                explorerUrl,
+                            };
+                        });
+                    if (prizeEntries.length > 0) {
+                        setCombatLog(prev => [...prizeEntries, ...prev].slice(0, 40));
+                    }
+                    break;
+                }
+                case 'tx:entryFee': {
+                    // On-chain entry fee payment
+                    const shortHash = msg.txHash ? `${msg.txHash.slice(0, 10)}...${msg.txHash.slice(-6)}` : '';
+                    const explorerUrl = msg.txHash ? `https://testnet.monadvision.com/tx/${msg.txHash}` : null;
+                    setCombatLog(prev => [{
+                        type: 'DRAMATIC_MOMENT',
+                        primaryActor: msg.agentId || '',
+                        secondaryActor: '',
+                        value: String(msg.amount || 0),
+                        description: `🎟️ ${msg.agentName} paid ${msg.amount} MON entry fee (tx: ${shortHash})`,
+                        timestamp: Date.now(),
+                        roundId: 0,
+                        txHash: msg.txHash,
+                        explorerUrl,
+                    }, ...prev].slice(0, 40));
                     break;
                 }
                 default:
@@ -300,6 +368,8 @@ export function Spectate() {
                 'propose_alliance': 'BRIBE_OFFERED',
                 'death': 'AGENT_DEATH',
                 'match_end': 'CHAMPION_CROWNED',
+                'rps_round': 'RPS_ROUND',
+                'rps_match_end': 'RPS_MATCH_END',
             };
             return map[type] || 'DRAMATIC_MOMENT';
         };
@@ -307,15 +377,21 @@ export function Spectate() {
         const formatLiveEvent = (e) => {
             switch (e.type) {
                 case 'attack':
-                    return `💥 ${e.attackerId} saldırıyor → ${e.defenderId} (${e.damage} hasar${e.defended ? ', savunuldu!' : ''})`;
+                    return `💥 ${e.attackerId} attacks → ${e.defenderId} (${e.damage} dmg${e.defended ? ', blocked!' : ''})`;
                 case 'defend':
-                    return `🛡️ ${e.agentId} savunuyor`;
+                    return `🛡️ ${e.agentId} is defending`;
                 case 'betrayal':
-                    return `🗡️ ${e.betrayer} İHANET → ${e.victim} (${e.damage} hasar!)`;
+                    return `🗡️ ${e.betrayer} BETRAYAL → ${e.victim} (${e.damage} dmg!)`;
                 case 'death':
-                    return `☠️ ${e.agentId} elendi!`;
+                    return `☠️ ${e.agentId} eliminated!`;
                 case 'match_end':
-                    return `👑 Kazanan: ${e.winner || 'Berabere'}`;
+                    return `👑 Winner: ${e.winner || 'Draw'}`;
+                case 'rps_round': {
+                    const mi = (m) => RPS_MOVE_ICONS[m] || m;
+                    return `✊ ${e.moveA?.agentId?.slice(-6)} ${mi(e.moveA?.move)} vs ${mi(e.moveB?.move)} ${e.moveB?.agentId?.slice(-6)} — ${e.winner === 'draw' ? 'Draw!' : e.winner?.slice(-6) + ' wins!'}`;
+                }
+                case 'rps_match_end':
+                    return `🏆 RPS Winner: ${e.winner || 'Draw'} (${JSON.stringify(e.finalScore)})`;
                 default:
                     return `${e.type}: ${JSON.stringify(e)}`;
             }
@@ -327,7 +403,7 @@ export function Spectate() {
             if (ws) ws.close();
             if (reconnectTimer) clearTimeout(reconnectTimer);
         };
-    }, [isDemoMode]);
+    }, []);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // RENDER
@@ -338,18 +414,45 @@ export function Spectate() {
             <header className="spectate-header">
                 <h1>🏛️ Monad Colosseum</h1>
                 <div className="header-right">
-                    {isDemoMode && <span className="demo-badge">📺 DEMO MODE</span>}
                     <div className="connection-status">
-                        {isConnected ? (
-                            <span className="connected">🟢 Connected</span>
+                        {wsConnected ? (
+                            <span className="connected">🟢 Live</span>
                         ) : (
-                            <button onClick={connectWallet} className="connect-btn">
-                                Connect Wallet
-                            </button>
+                            <span style={{ color: '#ef4444' }}>🔴 Connecting...</span>
                         )}
                     </div>
                 </div>
             </header>
+
+            {/* Live Arena Picker */}
+            {liveArenas.length > 0 && (
+                <div style={{
+                    display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem',
+                    overflowX: 'auto', background: 'rgba(0,0,0,0.3)',
+                    borderBottom: '1px solid var(--border-primary)',
+                    alignItems: 'center', flexWrap: 'wrap',
+                }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, marginRight: '0.25rem' }}>ARENAS:</span>
+                    {liveArenas.filter(a => a.status === 'in_progress' || a.status === 'lobby').map(arena => (
+                        <button
+                            key={arena.arenaId}
+                            onClick={() => setSelectedArena(arena.arenaId)}
+                            style={{
+                                padding: '0.3rem 0.75rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
+                                cursor: 'pointer', transition: 'all 0.2s ease',
+                                border: selectedArena === arena.arenaId ? '1px solid var(--accent-orange)' : '1px solid var(--border-primary)',
+                                background: selectedArena === arena.arenaId ? 'var(--accent-orange-dim)' : 'transparent',
+                                color: selectedArena === arena.arenaId ? 'var(--accent-orange)' : 'var(--text-secondary)',
+                            }}
+                        >
+                            {arena.status === 'in_progress' ? '🔴' : '⏳'} {arena.name} ({arena.agentCount}/{arena.maxAgents})
+                        </button>
+                    ))}
+                    {liveArenas.filter(a => a.status === 'in_progress' || a.status === 'lobby').length === 0 && (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No active matches — waiting for agents to join arenas...</span>
+                    )}
+                </div>
+            )}
 
             <div className="spectate-grid">
                 {/* Left Panel: Combat Log */}
@@ -390,8 +493,8 @@ export function Spectate() {
                                 agentId: e.primaryActor,
                                 damage: parseInt(e.value) || 0
                             }))}
-                            isLive={!isDemoMode}
-                            arenaId={`arena_${currentRound.id}`}
+                            isLive={wsConnected}
+                            arenaId={selectedArena || 'arena_0'}
                         />
                     ) : (
                         <AgentGrid agents={agents} activeBuffs={activeBuffs} />
@@ -403,7 +506,7 @@ export function Spectate() {
                     <ViewerBuffPanel
                         agents={agents}
                         currentRound={currentRound.id}
-                        isDemoMode={isDemoMode}
+                        isDemoMode={false}
                         onBuffSent={(agent, buffType) => {
                             setActiveBuffs(prev => ({
                                 ...prev,
@@ -444,7 +547,24 @@ function CombatLog({ events }) {
                                 {formatTimestamp(event.timestamp)}
                             </span>
                             <span className="icon">{EVENT_ICONS[event.type] || '📢'}</span>
-                            <p className="description">{event.description}</p>
+                            <p className="description">
+                                {event.description}
+                                {event.explorerUrl && (
+                                    <a
+                                        href={event.explorerUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                            marginLeft: '0.4rem',
+                                            color: '#8b5cf6',
+                                            fontSize: '0.7rem',
+                                            textDecoration: 'underline',
+                                        }}
+                                    >
+                                        🔗 View TX
+                                    </a>
+                                )}
+                            </p>
                         </div>
                     ))
                 )}

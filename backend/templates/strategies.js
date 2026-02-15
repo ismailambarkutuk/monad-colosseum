@@ -16,7 +16,7 @@
 module.exports = [
     {
         name: 'Berserker',
-        description: "Her zaman saldır. En zayıf rakibi hedef al. Savunma yok, merhamet yok.",
+        description: "Always attack. Target the weakest opponent. No defense, no mercy.",
         traits: ['aggressive', 'ruthless'],
         strategyParams: { aggressiveness: 95, riskTolerance: 80, briberyPolicy: 'reject', allianceTendency: 5, betrayalChance: 90 },
         code: `function decide(gameState) {
@@ -28,7 +28,7 @@ module.exports = [
     },
     {
         name: 'Diplomat',
-        description: "İttifak kur, rüşvet ver, sadık kal. Diplomasi ile kazan.",
+        description: "Form alliances, offer bribes, stay loyal. Win through diplomacy.",
         traits: ['loyal', 'diplomatic'],
         strategyParams: { aggressiveness: 20, riskTolerance: 40, briberyPolicy: 'accept', allianceTendency: 90, betrayalChance: 5 },
         code: `function decide(gameState) {
@@ -45,7 +45,7 @@ module.exports = [
     },
     {
         name: 'Trickster',
-        description: "İttifak kur, güven kazan, sonra pusudan saldır. İhanetçi!",
+        description: "Form alliances, gain trust, then strike from the shadows. Traitor!",
         traits: ['deceptive', 'cunning'],
         strategyParams: { aggressiveness: 70, riskTolerance: 60, briberyPolicy: 'accept', allianceTendency: 80, betrayalChance: 75 },
         code: `function decide(gameState) {
@@ -70,7 +70,7 @@ module.exports = [
     },
     {
         name: 'Turtle',
-        description: "Savunmada kal, HP koru. Son rakip kaldığında saldır.",
+        description: "Stay defensive, conserve HP. Attack when only the last opponent remains.",
         traits: ['defensive', 'patient'],
         strategyParams: { aggressiveness: 15, riskTolerance: 30, briberyPolicy: 'accept', allianceTendency: 40, betrayalChance: 10 },
         code: `function decide(gameState) {
@@ -83,7 +83,7 @@ module.exports = [
     },
     {
         name: 'Opportunist',
-        description: "Duruma göre hareket et. Zayıfsa saldır, güçlüyse savun.",
+        description: "Act according to the situation. Attack the weak, defend against the strong.",
         traits: ['adaptive', 'balanced'],
         strategyParams: { aggressiveness: 55, riskTolerance: 50, briberyPolicy: 'conditional', allianceTendency: 50, betrayalChance: 30 },
         code: `function decide(gameState) {
@@ -103,7 +103,7 @@ module.exports = [
     },
     {
         name: 'Bounty Hunter',
-        description: "Outlaw ve düşük HP rakipleri hedef al. Ödül avı için yaşa.",
+        description: "Target outlaws and low-HP opponents. Live for the bounty hunt.",
         traits: ['aggressive', 'tactical'],
         strategyParams: { aggressiveness: 75, riskTolerance: 70, briberyPolicy: 'reject', allianceTendency: 20, betrayalChance: 40 },
         code: `function decide(gameState) {
@@ -116,7 +116,7 @@ module.exports = [
     },
     {
         name: 'Briber',
-        description: "Rüşvet ver, rakipleri satın al. Para ile kazanmayı dene.",
+        description: "Offer bribes, buy off opponents. Try to win with money.",
         traits: ['wealthy', 'manipulative'],
         strategyParams: { aggressiveness: 30, riskTolerance: 50, briberyPolicy: 'accept', allianceTendency: 70, betrayalChance: 45 },
         code: `function decide(gameState) {

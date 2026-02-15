@@ -11,18 +11,18 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
 const WS_URL = (BACKEND_URL.replace('http', 'ws')) + '/ws'
 
 const BUFF_TYPES = [
-    { id: 'health', label: '❤️ HP', desc: '+HP başlangıç canı', color: '#22c55e' },
-    { id: 'armor', label: '🛡️ Zırh', desc: 'Hasar azaltma', color: '#3b82f6' },
-    { id: 'attack', label: '⚔️ Saldırı', desc: 'Hasar artışı', color: '#ef4444' },
-    { id: 'speed', label: '⚡ Hız', desc: 'Aksiyon önceliği', color: '#eab308' },
+    { id: 'health', label: '❤️ HP', desc: '+HP starting health', color: '#22c55e' },
+    { id: 'armor', label: '🛡️ Armor', desc: 'Damage reduction', color: '#3b82f6' },
+    { id: 'attack', label: '⚔️ Attack', desc: 'Damage increase', color: '#ef4444' },
+    { id: 'speed', label: '⚡ Speed', desc: 'Action priority', color: '#eab308' },
 ]
 
 const STATUS_MAP = {
-    idle: { label: 'Boşta', color: '#6b7280', icon: '⏸️' },
-    searching: { label: 'Arena arıyor...', color: '#eab308', icon: '🔍' },
-    fighting: { label: 'Savaşıyor', color: '#ef4444', icon: '⚔️' },
-    won: { label: 'Kazandı!', color: '#22c55e', icon: '🏆' },
-    lost: { label: 'Kaybetti', color: '#ef4444', icon: '💀' },
+    idle: { label: 'Idle', color: '#6b7280', icon: '⏸️' },
+    searching: { label: 'Searching arena...', color: '#eab308', icon: '🔍' },
+    fighting: { label: 'Fighting', color: '#ef4444', icon: '⚔️' },
+    won: { label: 'Won!', color: '#22c55e', icon: '🏆' },
+    lost: { label: 'Lost', color: '#ef4444', icon: '💀' },
 }
 
 function deriveTier(agent) {
@@ -85,7 +85,7 @@ export default function MyAgents({ onNavigate }) {
                 try {
                     const msg = JSON.parse(evt.data)
                     if (msg.type === 'agent:autoWithdraw') {
-                        addToast(`🎉 ${msg.agentName || 'Agent'} ${msg.amount?.toFixed(4)} MON kâr geri gönderdi!`, 'success')
+                        addToast(`🎉 ${msg.agentName || 'Agent'} sent back ${msg.amount?.toFixed(4)} MON profit!`, 'success')
                         if (selectedAgent === msg.agentId) {
                             fetch(`${BACKEND_URL}/api/agent/${msg.agentId}/transfers`)
                                 .then(r => r.json())
@@ -94,7 +94,7 @@ export default function MyAgents({ onNavigate }) {
                         }
                     }
                     if (msg.type === 'agent:withdraw') {
-                        addToast(`📤 ${msg.amount?.toFixed(4)} MON çekildi → cüzdanın`, 'info')
+                        addToast(`📤 ${msg.amount?.toFixed(4)} MON withdrawn → your wallet`, 'info')
                     }
                 } catch { /* ignore */ }
             }
@@ -126,7 +126,7 @@ export default function MyAgents({ onNavigate }) {
         setError(null)
         try {
             const res = await fetch(`${BACKEND_URL}/api/agents/${address}`)
-            if (!res.ok) throw new Error('Ajanlar yüklenirken hata oluştu')
+            if (!res.ok) throw new Error('Error loading agents')
             const data = await res.json()
             setAgents(data)
         } catch (err) {
@@ -246,10 +246,10 @@ export default function MyAgents({ onNavigate }) {
                 setAgents(prev => prev.map(a => a.id === buffAgent.id ? { ...a, buffs: data.totalBuffs } : a))
                 setBuffAgent(null)
             } else {
-                addToast('Hata: ' + (data.error || 'Bilinmeyen'), 'error')
+                addToast('Error: ' + (data.error || 'Unknown'), 'error')
             }
         } catch (err) {
-            addToast('Buff hatası: ' + err.message, 'error')
+            addToast('Buff error: ' + err.message, 'error')
         } finally {
             setBuffing(false)
         }
@@ -278,7 +278,7 @@ export default function MyAgents({ onNavigate }) {
             const data = await res.json()
             if (data.ok) {
                 setWithdrawResult(data)
-                addToast(`📤 ${data.amount} MON çekildi!`, 'success')
+                addToast(`📤 ${data.amount} MON withdrawn!`, 'success')
                 await fetchBalances(agents)
                 if (selectedAgent === withdrawAgent.id) {
                     fetch(`${BACKEND_URL}/api/agent/${withdrawAgent.id}/transfers`)
@@ -287,13 +287,13 @@ export default function MyAgents({ onNavigate }) {
                         .catch(() => {})
                 }
                 if (data.wasActive) {
-                    addToast('⚠️ Ajan aktifken çekim yapıldı — bakiye düşük kalabilir!', 'warning')
+                    addToast('⚠️ Withdrawal while agent is active — balance may run low!', 'warning')
                 }
             } else {
-                addToast('Çekim hatası: ' + (data.error || 'Bilinmeyen'), 'error')
+                addToast('Withdrawal error: ' + (data.error || 'Unknown'), 'error')
             }
         } catch (err) {
-            addToast('Çekim hatası: ' + err.message, 'error')
+            addToast('Withdrawal error: ' + err.message, 'error')
         } finally {
             setWithdrawing(false)
         }
@@ -314,16 +314,16 @@ export default function MyAgents({ onNavigate }) {
             })
             const data = await res.json()
             if (data.ok) {
-                addToast('✅ Ayarlar kaydedildi', 'success')
+                addToast('✅ Settings saved', 'success')
                 setAgents(prev => prev.map(a => a.id === selectedAgent ? {
                     ...a, strategyParams: { ...a.strategyParams, profitTarget: data.profitTarget, withdrawThreshold: data.withdrawThreshold }
                 } : a))
                 setEditingSettings(false)
             } else {
-                addToast('Hata: ' + (data.error || 'Bilinmeyen'), 'error')
+                addToast('Error: ' + (data.error || 'Unknown'), 'error')
             }
         } catch (err) {
-            addToast('Ayar hatası: ' + err.message, 'error')
+            addToast('Settings error: ' + err.message, 'error')
         } finally {
             setSavingSettings(false)
         }
@@ -333,8 +333,8 @@ export default function MyAgents({ onNavigate }) {
     if (!isConnected) {
         return (
             <div className="combat-log-panel" style={{ margin: '2rem', padding: '3rem', textAlign: 'center' }}>
-                <h2 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>🃏 Ajanlarım</h2>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Ajanlarını görmek için cüzdan bağla.</p>
+                <h2 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>🃏 My Agents</h2>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Connect your wallet to see your agents.</p>
                 <WalletButton />
             </div>
         )
@@ -344,7 +344,7 @@ export default function MyAgents({ onNavigate }) {
             <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
                     <div style={{ width: '48px', height: '48px', border: '4px solid var(--border-color)', borderTop: '4px solid var(--accent-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                    <p style={{ color: 'var(--text-secondary)' }}>Ajanlar yükleniyor...</p>
+                    <p style={{ color: 'var(--text-secondary)' }}>Loading agents...</p>
                 </div>
                 <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </div>
@@ -353,10 +353,10 @@ export default function MyAgents({ onNavigate }) {
     if (error) {
         return (
             <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-                <h1 style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: '1rem' }}>🃏 Ajanlarım</h1>
+                <h1 style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: '1rem' }}>🃏 My Agents</h1>
                 <div className="combat-log-panel" style={{ padding: '2rem', textAlign: 'center' }}>
                     <p style={{ color: '#ef4444', marginBottom: '1rem' }}>❌ {error}</p>
-                    <button onClick={fetchAgents} className="connect-btn" style={{ padding: '0.75rem 1.5rem' }}>🔄 Tekrar Dene</button>
+                    <button onClick={fetchAgents} className="connect-btn" style={{ padding: '0.75rem 1.5rem' }}>🔄 Retry</button>
                 </div>
             </div>
         )
@@ -364,15 +364,15 @@ export default function MyAgents({ onNavigate }) {
     if (agents.length === 0) {
         return (
             <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-                <h1 style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: '2rem' }}>🃏 Ajanlarım</h1>
+                <h1 style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: '2rem' }}>🃏 My Agents</h1>
                 <div className="combat-log-panel" style={{ padding: '3rem', textAlign: 'center' }}>
                     <span style={{ fontSize: '5rem', display: 'block', marginBottom: '1rem' }}>⚔️</span>
-                    <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Henüz gladyatörün yok</h3>
+                    <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>You don't have any gladiators yet</h3>
                     <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', maxWidth: '420px', margin: '0 auto 1.5rem' }}>
-                        İlk AI gladyatörünü oluştur ve arenalarda savaşmaya başla!
+                        Create your first AI gladiator and start battling in the arenas!
                     </p>
                     <button onClick={() => onNavigate?.('create')} className="connect-btn" style={{ fontSize: '1rem', padding: '0.75rem 2rem' }}>
-                        🧠 Yeni Ajan Oluştur
+                        🧠 Create New Agent
                     </button>
                 </div>
             </div>
@@ -409,10 +409,10 @@ export default function MyAgents({ onNavigate }) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <h1 style={{ color: 'var(--text-primary)', fontWeight: 700, margin: 0 }}>
-                    🃏 Ajanlarım <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '1rem' }}>({agents.length})</span>
+                    🃏 My Agents <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '1rem' }}>({agents.length})</span>
                 </h1>
                 <button onClick={() => onNavigate?.('create')} className="connect-btn" style={{ padding: '0.6rem 1.25rem', fontSize: '0.9rem' }}>
-                    + Yeni Ajan Oluştur
+                    + Create New Agent
                 </button>
             </div>
 
@@ -467,7 +467,7 @@ export default function MyAgents({ onNavigate }) {
                             {/* Stats Row */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
                                 <div style={{ textAlign: 'center' }}>
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.65rem', margin: 0 }}>G/M</p>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.65rem', margin: 0 }}>W/L</p>
                                     <p style={{ margin: 0, fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
                                         <span style={{ color: '#22c55e' }}>{agent.stats?.wins || 0}</span>
                                         <span style={{ color: 'var(--text-muted)' }}>/</span>
@@ -475,7 +475,7 @@ export default function MyAgents({ onNavigate }) {
                                     </p>
                                 </div>
                                 <div style={{ textAlign: 'center' }}>
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.65rem', margin: 0 }}>Kazanç</p>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.65rem', margin: 0 }}>Earnings</p>
                                     <p style={{ margin: 0, fontWeight: 700, color: 'var(--accent-gold)', fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
                                         {agent.stats?.earnings || 0} MON
                                     </p>
@@ -493,7 +493,7 @@ export default function MyAgents({ onNavigate }) {
                                     {agent.buffs.armor > 0 && <span style={{ background: '#3b82f620', color: '#3b82f6', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem' }}>🛡️+{agent.buffs.armor}</span>}
                                     {agent.buffs.attack > 0 && <span style={{ background: '#ef444420', color: '#ef4444', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem' }}>⚔️+{agent.buffs.attack}</span>}
                                     {agent.buffs.speed > 0 && <span style={{ background: '#eab30820', color: '#eab308', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem' }}>⚡+{agent.buffs.speed}</span>}
-                                    {agent.buffs.matchesLeft > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>({agent.buffs.matchesLeft} maç kaldı)</span>}
+                                    {agent.buffs.matchesLeft > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>({agent.buffs.matchesLeft} matches left)</span>}
                                 </div>
                             )}
 
@@ -505,21 +505,21 @@ export default function MyAgents({ onNavigate }) {
                                     className={isActive ? 'mc-btn-danger' : 'mc-btn-primary'}
                                     style={{ flex: 2, padding: '0.5rem', fontSize: '0.8rem' }}
                                 >
-                                    {activating === agent.id ? '⏳...' : isActive ? '⏹️ Durdur' : '▶️ Aktifleştir'}
+                                    {activating === agent.id ? '⏳...' : isActive ? '⏹️ Stop' : '▶️ Activate'}
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setSendAgent(agent); setSendTxDone(false); }}
                                     className="mc-btn-secondary"
                                     style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem' }}
                                 >
-                                    💸 Gönder
+                                    💸 Send
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setWithdrawAgent(agent); setWithdrawAmount(''); setWithdrawResult(null); }}
                                     className="mc-btn-secondary"
                                     style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem' }}
                                 >
-                                    📤 Çek
+                                    📤 Withdraw
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setBuffAgent(agent); }}
@@ -537,17 +537,17 @@ export default function MyAgents({ onNavigate }) {
             {/* ===== SEND MON MODAL ===== */}
             {sendAgent && (
                 <Modal onClose={() => setSendAgent(null)}>
-                    <h3 style={{ color: 'var(--text-primary)', margin: '0 0 1rem' }}>💸 Para Gönder — {sendAgent.name}</h3>
+                    <h3 style={{ color: 'var(--text-primary)', margin: '0 0 1rem' }}>💸 Send Funds — {sendAgent.name}</h3>
                     <p className="mc-text-secondary" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
-                        MetaMask ile ajanın cüzdanına MON gönder.
+                        Send MON to your agent's wallet via MetaMask.
                     </p>
                     <div style={{ background: 'var(--bg-tertiary)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem' }}>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>Alıcı Adres</p>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>Recipient Address</p>
                         <code style={{ color: 'var(--accent-gold)', fontSize: '0.75rem', wordBreak: 'break-all' }}>
                             {sendAgent.agentWalletAddress}
                         </code>
                     </div>
-                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem' }}>Miktar (MON)</label>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem' }}>Amount (MON)</label>
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
                         {['0.5', '1', '5', '10'].map(v => (
                             <button key={v} onClick={() => setSendAmount(v)} style={{
@@ -564,10 +564,10 @@ export default function MyAgents({ onNavigate }) {
                     />
 
                     {sendError && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginBottom: '0.5rem' }}>❌ {sendError.shortMessage || sendError.message}</p>}
-                    {sendTxHash && !isSendConfirmed && <p style={{ color: 'var(--accent-orange)', fontSize: '0.8rem' }}>⏳ Onaylanıyor...</p>}
+                    {sendTxHash && !isSendConfirmed && <p style={{ color: 'var(--accent-orange)', fontSize: '0.8rem' }}>⏳ Confirming...</p>}
                     {isSendConfirmed && (
                         <div style={{ marginBottom: '1rem' }}>
-                            <p style={{ color: '#22c55e', fontWeight: 600, marginBottom: '0.25rem' }}>✅ Transfer başarılı!</p>
+                            <p style={{ color: '#22c55e', fontWeight: 600, marginBottom: '0.25rem' }}>✅ Transfer successful!</p>
                             <a href={`https://testnet.monadvision.com/tx/${sendTxHash}`} target="_blank" rel="noreferrer"
                                 style={{ color: 'var(--accent-cyan)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
                                 TX: {sendTxHash.slice(0, 12)}...{sendTxHash.slice(-8)}
@@ -576,10 +576,10 @@ export default function MyAgents({ onNavigate }) {
                     )}
 
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        <button onClick={() => setSendAgent(null)} className="mc-btn-secondary" style={{ flex: 1 }}>Kapat</button>
+                        <button onClick={() => setSendAgent(null)} className="mc-btn-secondary" style={{ flex: 1 }}>Close</button>
                         {!isSendConfirmed && (
                             <button onClick={doSendMON} disabled={isSending} className="mc-btn-primary" style={{ flex: 2 }}>
-                                {isSending ? '⏳ İmza bekleniyor...' : `💸 ${sendAmount} MON Gönder`}
+                                {isSending ? '⏳ Waiting for signature...' : `💸 Send ${sendAmount} MON`}
                             </button>
                         )}
                     </div>
@@ -589,34 +589,34 @@ export default function MyAgents({ onNavigate }) {
             {/* ===== WITHDRAW MODAL ===== */}
             {withdrawAgent && (
                 <Modal onClose={() => setWithdrawAgent(null)}>
-                    <h3 style={{ color: 'var(--text-primary)', margin: '0 0 1rem' }}>📤 Para Çek — {withdrawAgent.name}</h3>
+                    <h3 style={{ color: 'var(--text-primary)', margin: '0 0 1rem' }}>📤 Withdraw — {withdrawAgent.name}</h3>
 
                     {/* Active agent warning */}
                     {(withdrawAgent.status === 'searching' || withdrawAgent.status === 'fighting') && (
                         <div style={{ background: '#713f1220', border: '1px solid #eab308', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem' }}>
                             <p style={{ color: '#eab308', fontSize: '0.8rem', margin: 0, fontWeight: 600 }}>
-                                ⚠️ Bu ajan şu an aktif! Para çekerseniz maç sırasında bakiye düşük kalabilir.
+                                ⚠️ This agent is currently active! Withdrawing may leave the balance too low during a match.
                             </p>
                         </div>
                     )}
 
                     <div style={{ background: 'var(--bg-tertiary)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', textAlign: 'center' }}>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>Mevcut Bakiye</p>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>Current Balance</p>
                         <p style={{ color: 'var(--accent-gold)', fontWeight: 800, fontSize: '1.3rem', fontFamily: 'var(--font-mono)', margin: '0.25rem 0 0' }}>
                             💰 {(balances[withdrawAgent.id]?.balanceMON ?? 0).toFixed(4)} MON
                         </p>
                     </div>
 
-                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem' }}>Çekilecek Miktar (MON)</label>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem' }}>Withdrawal Amount (MON)</label>
                     <input type="number" step="0.01" min="0.01" value={withdrawAmount}
                         onChange={e => setWithdrawAmount(e.target.value)}
-                        placeholder="Örn: 1.5"
+                        placeholder="e.g. 1.5"
                         style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', marginBottom: '0.75rem', boxSizing: 'border-box' }}
                     />
 
                     {withdrawResult && (
                         <div style={{ marginBottom: '1rem' }}>
-                            <p style={{ color: '#22c55e', fontWeight: 600, marginBottom: '0.25rem' }}>✅ {withdrawResult.amount} MON çekildi!</p>
+                            <p style={{ color: '#22c55e', fontWeight: 600, marginBottom: '0.25rem' }}>✅ {withdrawResult.amount} MON withdrawn!</p>
                             {withdrawResult.txHash && (
                                 <a href={`https://testnet.monadvision.com/tx/${withdrawResult.txHash}`} target="_blank" rel="noreferrer"
                                     style={{ color: 'var(--accent-cyan)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
@@ -627,13 +627,13 @@ export default function MyAgents({ onNavigate }) {
                     )}
 
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => setWithdrawAgent(null)} className="mc-btn-secondary" style={{ flex: 1 }}>Kapat</button>
+                        <button onClick={() => setWithdrawAgent(null)} className="mc-btn-secondary" style={{ flex: 1 }}>Close</button>
                         <button onClick={() => doWithdraw(true)} disabled={withdrawing} className="mc-btn-secondary"
                             style={{ flex: 1, background: '#a855f720', color: '#a855f7', border: '1px solid #a855f7' }}>
-                            {withdrawing ? '⏳...' : '🏧 Tamamını Çek'}
+                            {withdrawing ? '⏳...' : '🏧 Withdraw All'}
                         </button>
                         <button onClick={() => doWithdraw(false)} disabled={withdrawing || !withdrawAmount} className="mc-btn-primary" style={{ flex: 2 }}>
-                            {withdrawing ? '⏳ İşleniyor...' : `📤 ${withdrawAmount || '?'} MON Çek`}
+                            {withdrawing ? '⏳ Processing...' : `📤 Withdraw ${withdrawAmount || '?'} MON`}
                         </button>
                     </div>
                 </Modal>
@@ -642,9 +642,9 @@ export default function MyAgents({ onNavigate }) {
             {/* ===== BUFF MODAL ===== */}
             {buffAgent && (
                 <Modal onClose={() => setBuffAgent(null)}>
-                    <h3 style={{ color: 'var(--text-primary)', margin: '0 0 1rem' }}>🔥 Buff Ver — {buffAgent.name}</h3>
+                    <h3 style={{ color: 'var(--text-primary)', margin: '0 0 1rem' }}>🔥 Apply Buff — {buffAgent.name}</h3>
                     <p className="mc-text-secondary" style={{ marginBottom: '1.5rem', fontSize: '0.85rem' }}>
-                        MON yakarak ajanına geçici buff ver. Süre: 3 maç veya 1 saat.
+                        Burn MON to give your agent a temporary buff. Duration: 3 matches or 1 hour.
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1.5rem' }}>
                         {BUFF_TYPES.map(bt => (
@@ -660,7 +660,7 @@ export default function MyAgents({ onNavigate }) {
                             </button>
                         ))}
                     </div>
-                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem' }}>Yakılacak MON</label>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem' }}>MON to Burn</label>
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
                         {['0.1', '0.5', '1', '5'].map(v => (
                             <button key={v} onClick={() => setBuffAmount(v)} style={{
@@ -675,12 +675,12 @@ export default function MyAgents({ onNavigate }) {
                         style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}
                     />
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '1.5rem' }}>
-                        Tahmini buff: +{Math.min(Math.round(parseFloat(buffAmount || 0) * 100), 500)} {BUFF_TYPES.find(b => b.id === buffType)?.label} puan
+                        Estimated buff: +{Math.min(Math.round(parseFloat(buffAmount || 0) * 100), 500)} {BUFF_TYPES.find(b => b.id === buffType)?.label} points
                     </p>
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        <button onClick={() => setBuffAgent(null)} className="mc-btn-secondary" style={{ flex: 1 }}>İptal</button>
+                        <button onClick={() => setBuffAgent(null)} className="mc-btn-secondary" style={{ flex: 1 }}>Cancel</button>
                         <button onClick={applyBuff} disabled={buffing} className="mc-btn-primary" style={{ flex: 2 }}>
-                            {buffing ? '⏳ Yakılıyor...' : `🔥 ${buffAmount} MON Yak`}
+                            {buffing ? '⏳ Burning...' : `🔥 Burn ${buffAmount} MON`}
                         </button>
                     </div>
                 </Modal>
@@ -697,71 +697,71 @@ export default function MyAgents({ onNavigate }) {
                 return (
                     <div className="combat-log-panel" style={{ marginTop: '1.5rem', padding: '1.5rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h3 style={{ color: 'var(--text-primary)', margin: 0 }}>📋 {agent.name} — Detaylar</h3>
+                            <h3 style={{ color: 'var(--text-primary)', margin: 0 }}>📋 {agent.name} — Details</h3>
                             <button onClick={() => setSelectedAgent(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.25rem' }}>✕</button>
                         </div>
 
                         {/* Financial Summary */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                            <FinCard icon="💰" label="Mevcut Bakiye" value={`${bal.toFixed(4)} MON`} color="var(--accent-gold)" />
-                            <FinCard icon="📥" label="Toplam Yatırılan" value={`${fin.totalDeposited.toFixed(2)} MON`} color="#3b82f6" />
-                            <FinCard icon="📤" label="Toplam Çekilen" value={`${fin.totalWithdrawn.toFixed(2)} MON`} color="#a855f7" />
-                            <FinCard icon="📈" label="Net Kâr/Zarar" value={`${netPL >= 0 ? '+' : ''}${netPL.toFixed(4)} MON`} color={netPL >= 0 ? '#22c55e' : '#ef4444'} />
-                            <FinCard icon="🏆" label="G / M" value={`${agent.stats?.wins || 0}W / ${agent.stats?.losses || 0}L`} color="var(--text-primary)" />
+                            <FinCard icon="💰" label="Current Balance" value={`${bal.toFixed(4)} MON`} color="var(--accent-gold)" />
+                            <FinCard icon="📥" label="Total Deposited" value={`${fin.totalDeposited.toFixed(2)} MON`} color="#3b82f6" />
+                            <FinCard icon="📤" label="Total Withdrawn" value={`${fin.totalWithdrawn.toFixed(2)} MON`} color="#a855f7" />
+                            <FinCard icon="📈" label="Net P&L" value={`${netPL >= 0 ? '+' : ''}${netPL.toFixed(4)} MON`} color={netPL >= 0 ? '#22c55e' : '#ef4444'} />
+                            <FinCard icon="🏆" label="W / L" value={`${agent.stats?.wins || 0}W / ${agent.stats?.losses || 0}L`} color="var(--text-primary)" />
                         </div>
 
                         {/* Agent Info Grid */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
-                            <InfoItem label="Ajan ID" value={agent.id} mono />
-                            <InfoItem label="Cüzdan" value={agent.agentWalletAddress ? `${agent.agentWalletAddress.slice(0, 8)}...${agent.agentWalletAddress.slice(-6)}` : 'N/A'} mono />
-                            <InfoItem label="Durum" value={STATUS_MAP[agent.status]?.label || 'Boşta'} />
-                            <InfoItem label="Oluşturulma" value={new Date(agent.createdAt).toLocaleDateString('tr-TR')} />
+                            <InfoItem label="Agent ID" value={agent.id} mono />
+                            <InfoItem label="Wallet" value={agent.agentWalletAddress ? `${agent.agentWalletAddress.slice(0, 8)}...${agent.agentWalletAddress.slice(-6)}` : 'N/A'} mono />
+                            <InfoItem label="Status" value={STATUS_MAP[agent.status]?.label || 'Idle'} />
+                            <InfoItem label="Created" value={new Date(agent.createdAt).toLocaleDateString('en-US')} />
                         </div>
 
                         {/* ─── Profit / Auto-Withdraw Settings ─── */}
                         <div style={{ background: 'var(--bg-tertiary)', padding: '1rem', borderRadius: '10px', marginBottom: '1rem', border: '1px solid var(--border-color)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                <p style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 700, margin: 0 }}>⚙️ Kâr Hedefi & Otomatik Çekim</p>
+                                <p style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 700, margin: 0 }}>⚙️ Profit Target & Auto-Withdraw</p>
                                 {!editingSettings ? (
                                     <button onClick={() => setEditingSettings(true)} style={{
                                         background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--accent-cyan)',
                                         padding: '0.25rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem',
-                                    }}>✏️ Düzenle</button>
+                                    }}>✏️ Edit</button>
                                 ) : (
                                     <div style={{ display: 'flex', gap: '0.4rem' }}>
                                         <button onClick={saveSettings} disabled={savingSettings} style={{
                                             background: '#22c55e20', border: '1px solid #22c55e', color: '#22c55e',
                                             padding: '0.25rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem',
-                                        }}>{savingSettings ? '⏳' : '💾 Kaydet'}</button>
+                                        }}>{savingSettings ? '⏳' : '💾 Save'}</button>
                                         <button onClick={() => setEditingSettings(false)} style={{
                                             background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-muted)',
                                             padding: '0.25rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem',
-                                        }}>İptal</button>
+                                        }}>Cancel</button>
                                     </div>
                                 )}
                             </div>
                             {!editingSettings ? (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                     <div>
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>🎯 Kâr Hedefi (çarpan)</p>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>🎯 Profit Target (multiplier)</p>
                                         <p style={{ color: 'var(--accent-gold)', fontWeight: 700, fontFamily: 'var(--font-mono)', margin: '0.15rem 0 0' }}>{agent.strategyParams?.profitTarget ?? 2}x</p>
                                     </div>
                                     <div>
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>🏧 Çekim Eşiği (MON)</p>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0 }}>🏧 Withdraw Threshold (MON)</p>
                                         <p style={{ color: '#a855f7', fontWeight: 700, fontFamily: 'var(--font-mono)', margin: '0.15rem 0 0' }}>{agent.strategyParams?.withdrawThreshold ?? 0.5} MON</p>
                                     </div>
                                 </div>
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                     <div>
-                                        <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', display: 'block', marginBottom: '0.25rem' }}>🎯 Kâr Hedefi (çarpan)</label>
+                                        <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', display: 'block', marginBottom: '0.25rem' }}>🎯 Profit Target (multiplier)</label>
                                         <input type="number" step="0.1" min="1.1" value={settingsProfitTarget}
                                             onChange={e => setSettingsProfitTarget(e.target.value)}
                                             style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', boxSizing: 'border-box' }}
                                         />
                                     </div>
                                     <div>
-                                        <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', display: 'block', marginBottom: '0.25rem' }}>🏧 Çekim Eşiği (MON)</label>
+                                        <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', display: 'block', marginBottom: '0.25rem' }}>🏧 Withdraw Threshold (MON)</label>
                                         <input type="number" step="0.1" min="0.01" value={settingsWithdrawThreshold}
                                             onChange={e => setSettingsWithdrawThreshold(e.target.value)}
                                             style={{ width: '100%', padding: '0.4rem', borderRadius: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', boxSizing: 'border-box' }}
@@ -770,14 +770,14 @@ export default function MyAgents({ onNavigate }) {
                                 </div>
                             )}
                             <p style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginTop: '0.5rem', marginBottom: 0 }}>
-                                💡 Bakiye = İlk yatırım × kâr hedefi olduğunda, fazla kısım otomatik cüzdanınıza geri gönderilir.
+                                💡 When balance = initial deposit × profit target, the excess is automatically sent back to your wallet.
                             </p>
                         </div>
 
                         {/* Strategy Code */}
                         {agent.strategy && (
                             <div style={{ marginBottom: '1rem' }}>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Strateji Kodu</p>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Strategy Code</p>
                                 <pre style={{
                                     background: 'var(--bg-primary, #0a0a1a)', padding: '0.75rem', borderRadius: '8px',
                                     overflow: 'auto', maxHeight: '120px', fontSize: '0.75rem',
@@ -791,7 +791,7 @@ export default function MyAgents({ onNavigate }) {
                         {/* Transfer History */}
                         {transfers.length > 0 && (
                             <div>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem' }}>📜 Son İşlem Geçmişi</p>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem' }}>📜 Recent Transaction History</p>
                                 <div style={{ maxHeight: '200px', overflow: 'auto' }}>
                                     {transfers.slice().reverse().slice(0, 20).map((tx, i) => (
                                         <div key={i} style={{
@@ -800,13 +800,13 @@ export default function MyAgents({ onNavigate }) {
                                             fontSize: '0.75rem',
                                         }}>
                                             <span style={{ color: tx.type === 'deposit' ? '#22c55e' : tx.type === 'auto_withdraw' ? '#a855f7' : tx.type === 'manual_withdraw' ? '#f97316' : 'var(--text-secondary)' }}>
-                                                {tx.type === 'deposit' ? '📥 Yatırma' : tx.type === 'auto_withdraw' ? '📤 Oto-Çekim' : tx.type === 'manual_withdraw' ? '📤 Manuel Çekim' : tx.type}
+                                                {tx.type === 'deposit' ? '📥 Deposit' : tx.type === 'auto_withdraw' ? '📤 Auto-Withdraw' : tx.type === 'manual_withdraw' ? '📤 Manual Withdraw' : tx.type}
                                             </span>
                                             <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
                                                 {tx.type === 'deposit' ? '+' : '-'}{tx.amount} MON
                                             </span>
                                             <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
-                                                {new Date(tx.timestamp).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                                                {new Date(tx.timestamp).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                                             </span>
                                             {tx.txHash && (
                                                 <a href={`https://testnet.monadvision.com/tx/${tx.txHash}`} target="_blank" rel="noreferrer"

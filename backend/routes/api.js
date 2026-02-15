@@ -8,9 +8,9 @@ const router = express.Router();
 module.exports = function createRoutes(arenaManager, gameEngine) {
   // ─── Arena Endpoints ───────────────────────────────────────────────────
 
-  // List all arenas (optional ?status=open filter)
+  // List all arenas (optional ?status=open&gameType=rps filter)
   router.get('/arenas', (req, res) => {
-    const arenas = arenaManager.listArenas(req.query.status || null);
+    const arenas = arenaManager.listArenas(req.query.status || null, req.query.gameType || null);
     res.json({ ok: true, arenas });
   });
 

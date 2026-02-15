@@ -16,14 +16,15 @@ export function WalletButton() {
           onClick={() => disconnect()}
           style={{
             padding: '8px 16px',
-            backgroundColor: '#ef4444',
+            backgroundColor: 'var(--accent-red, #ef4444)',
             color: 'white',
             border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer'
+            borderRadius: 'var(--border-radius-sm, 6px)',
+            cursor: 'pointer',
+            minHeight: '44px',
           }}
         >
-          Bağlantıyı Kes
+          Disconnect
         </button>
       </div>
     );
@@ -34,15 +35,16 @@ export function WalletButton() {
       onClick={() => open()}
       style={{
         padding: '12px 24px',
-        backgroundColor: '#3b82f6',
+        backgroundColor: 'var(--accent, #3b82f6)',
         color: 'white',
         border: 'none',
-        borderRadius: '8px',
+        borderRadius: 'var(--border-radius-sm, 6px)',
         cursor: 'pointer',
-        fontWeight: '600'
+        fontWeight: '600',
+        minHeight: '44px',
       }}
     >
-      Cüzdan Bağla
+      Connect Wallet
     </button>
   );
 }

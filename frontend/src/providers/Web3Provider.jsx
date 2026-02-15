@@ -6,7 +6,7 @@ import { monadTestnet } from '../config/chains';
 
 const queryClient = new QueryClient();
 
-// Web3Modal oluştur
+// Create Web3Modal
 createWeb3Modal({
     wagmiConfig: config,
     projectId: 'a70ed85d01dbff2c2d46f92f6538c810',

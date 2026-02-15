@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { ArenaR3F } from './r3f/ArenaR3F';
 
 // WebSocket client
 class SpectateWsClient {
@@ -85,75 +86,30 @@ class SpectateWsClient {
 // Global WS instance
 const wsClient = new SpectateWsClient();
 
-export function Arena3DViewer({ agents, events, isLive = false, arenaId }) {
+export function Arena3DViewer({ agents, events, isLive = false, arenaId, className, style }) {
     const canvasRef = useRef(null);
-    const sceneRef = useRef(null);
+    // Initialize 3D scene (Removed Legacy ArenaScene)
+    // ArenaR3F handles its own initialization via React Lifecycle
+
+    // Process incoming events
+    // ArenaR3F handles this via props. We just need to ensure 'events' prop is up to date.
+    // In live mode, we accumulate events in battleLog, but for animations we usually want 'latest' events.
+    // ArenaR3F expects 'events' to trigger animations.
+    // If isLive, 'battleLog' grows. Passing entire battleLog to ArenaR3F is bad (re-runs all animations).
+    // We should pass 'lastEvents' state.
+
+    // For DemoBattle (isLive=false), 'events' prop is passed from parent (lastTurnEvents).
+    // For Spectate (isLive=true), we need to track 'lastEvents' from WS.
+
     const [isConnected, setIsConnected] = useState(false);
     const [currentTurn, setCurrentTurn] = useState(0);
     const [battleLog, setBattleLog] = useState([]);
+    const [lastWsEvents, setLastWsEvents] = useState([]);
 
-    // Initialize 3D scene
     useEffect(() => {
-        if (!canvasRef.current) return;
-
-        // Dynamic import of ArenaScene (it's ES module)
-        const initScene = async () => {
-            try {
-                const { ArenaScene } = await import('../arena3d/ArenaScene.js');
-                sceneRef.current = new ArenaScene(canvasRef.current);
-
-                // Setup initial agents
-                if (agents && agents.length > 0) {
-                    const formattedAgents = agents.map((a, i) => ({
-                        id: a.id || a.address || `agent_${i}`,
-                        hp: a.health || a.hp || 100,
-                        alive: a.isAlive !== false && a.alive !== false,
-                        lastAction: null
-                    }));
-                    sceneRef.current.setupAgents(formattedAgents);
-                }
-            } catch (error) {
-                console.error('Failed to init ArenaScene:', error);
-            }
-        };
-
-        initScene();
-
-        return () => {
-            if (sceneRef.current && sceneRef.current.dispose) {
-                sceneRef.current.dispose();
-            }
-        };
-    }, []);
-
-    // Update agents when they change
-    useEffect(() => {
-        if (!sceneRef.current || !agents) return;
-
-        const formattedAgents = agents.map((a, i) => ({
-            id: a.id || a.address || `agent_${i}`,
-            hp: a.health || a.hp || 100,
-            alive: a.isAlive !== false && a.alive !== false,
-            lastAction: a.lastAction
-        }));
-
-        sceneRef.current.setupAgents(formattedAgents);
-    }, [agents]);
-
-    // Process incoming events
-    useEffect(() => {
-        if (!sceneRef.current || !events || events.length === 0) return;
-
-        // Get current agents state
-        const currentAgents = agents?.map((a, i) => ({
-            id: a.id || a.address || `agent_${i}`,
-            hp: a.health || a.hp || 100,
-            alive: a.isAlive !== false && a.alive !== false,
-            lastAction: null
-        })) || [];
-
-        sceneRef.current.updateFromEvents(events, currentAgents);
-    }, [events, agents]);
+        if (!isLive) return;
+        // If not live, rely on props
+    }, [isLive]);
 
     // WebSocket connection for live mode
     useEffect(() => {
@@ -166,17 +122,9 @@ export function Arena3DViewer({ agents, events, isLive = false, arenaId }) {
 
         const handleTurn = (msg) => {
             setCurrentTurn(msg.turn);
-            setBattleLog(prev => [...prev.slice(-20), ...msg.events]);
-
-            if (sceneRef.current && msg.events) {
-                const currentAgents = agents?.map((a, i) => ({
-                    id: a.id || a.address || `agent_${i}`,
-                    hp: a.health || a.hp || 100,
-                    alive: a.isAlive !== false,
-                    lastAction: null
-                })) || [];
-
-                sceneRef.current.updateFromEvents(msg.events, currentAgents);
+            if (msg.events && Array.isArray(msg.events)) {
+                setBattleLog(prev => [...(prev || []), ...msg.events]);
+                setLastWsEvents(msg.events);
             }
         };
 
@@ -196,7 +144,7 @@ export function Arena3DViewer({ agents, events, isLive = false, arenaId }) {
     }, [isLive, arenaId, agents]);
 
     return (
-        <div className="arena-3d-viewer">
+        <div className={`arena-3d-viewer ${className || ''}`} style={style}>
             <div className="arena-3d-header">
                 <h3>🎮 3D Arena View</h3>
                 <div className="arena-3d-status">
@@ -209,21 +157,23 @@ export function Arena3DViewer({ agents, events, isLive = false, arenaId }) {
                 </div>
             </div>
 
-            <canvas
-                ref={canvasRef}
-                id="arena-3d-canvas"
-                style={{
-                    width: '100%',
-                    height: '400px',
-                    background: '#0a0a0f',
-                    borderRadius: '8px',
-                    cursor: 'grab'
-                }}
-            />
+            {/* R3F Arena */}
+            <div style={{ width: '100%', height: '650px', position: 'relative' }}>
+                <ArenaR3F
+                    agents={agents.map((a, i) => ({
+                        ...a,
+                        id: a.id || a.address || `agent_${i}`,
+                        name: a.name || a.id || a.address || `Agent ${i + 1}`
+                    }))}
+                    events={isLive ? lastWsEvents : events}
+                    className="r3f-canvas-container"
+                    style={{ width: '100%', height: '100%' }}
+                />
+            </div>
 
-            {battleLog.length > 0 && (
+            {(battleLog || []).length > 0 && (
                 <div className="arena-3d-log">
-                    {battleLog.slice(-5).map((evt, i) => (
+                    {(battleLog || []).slice(-5).map((evt, i) => (
                         <div key={i} className={`log-item ${evt.type}`}>
                             {evt.type === 'attack' && `⚔️ ${evt.attackerId} → ${evt.defenderId} (-${evt.damage})`}
                             {evt.type === 'defend' && `🛡️ ${evt.agentId} defended`}

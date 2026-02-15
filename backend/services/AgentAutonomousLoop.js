@@ -48,9 +48,19 @@ class AgentAutonomousLoop extends EventEmitter {
         if (this.running) return;
         this.running = true;
         console.log('[AutonomousLoop] Started - scanning every', this.config.SCAN_INTERVAL_MS, 'ms');
-        this.timer = setInterval(() => this._scan(), this.config.SCAN_INTERVAL_MS);
+        this.timer = setInterval(() => {
+            try {
+                this._scan();
+            } catch (err) {
+                console.error('[AutonomousLoop] Scan interval error:', err.message);
+            }
+        }, this.config.SCAN_INTERVAL_MS);
         // Run first scan immediately
-        this._scan();
+        try {
+            this._scan();
+        } catch (err) {
+            console.error('[AutonomousLoop] Initial scan error:', err.message);
+        }
     }
 
     stop() {
@@ -67,25 +77,60 @@ class AgentAutonomousLoop extends EventEmitter {
 
     async _scan() {
         try {
+            const allAgents = Object.values(this.agents);
             const openArenas = this.arenaManager.listArenas('open');
             const lobbyArenas = this.arenaManager.listArenas('lobby');
             const availableArenas = [...openArenas, ...lobbyArenas];
 
-            if (availableArenas.length === 0) return;
+            // Diagnostic: count agents by status
+            const searchingAgents = allAgents.filter(a => a.status === 'searching' || a.status === 'idle_searching');
+            const hasDecideCount = allAgents.filter(a => a.strategyCode?.decide).length;
 
             // Get all autonomous agents that are activated (status === 'searching') and have strategyCode
-            const autonomousAgents = Object.values(this.agents).filter(agent =>
+            const autonomousAgents = allAgents.filter(agent =>
                 agent.strategyCode?.decide &&
                 (agent.status === 'searching' || agent.status === 'idle_searching') &&
                 this._isAgentAvailable(agent.id)
             );
 
-            if (autonomousAgents.length === 0) return;
+            console.log(`[SCAN] Agents total=${allAgents.length} searching=${searchingAgents.length} hasDecide=${hasDecideCount} eligible=${autonomousAgents.length} | Arenas open=${openArenas.length} lobby=${lobbyArenas.length}`);
+
+            // Log why agents might be skipped
+            if (searchingAgents.length > 0 && autonomousAgents.length === 0) {
+                for (const agent of searchingAgents) {
+                    const reasons = [];
+                    if (!agent.strategyCode?.decide) reasons.push('no strategyCode.decide');
+                    if (!this._isAgentAvailable(agent.id)) reasons.push('not available (cooldown/inMatch)');
+                    if (reasons.length > 0) {
+                        console.log(`[SCAN] ⚠️ ${agent.name} (${agent.id}) skipped: ${reasons.join(', ')}`);
+                    }
+                }
+            }
+
+            if (availableArenas.length === 0 || autonomousAgents.length === 0) return;
+
+            console.log(`[SCAN] Matching ${autonomousAgents.length} agents to ${availableArenas.length} arenas...`);
 
             for (const agent of autonomousAgents) {
-                const bestArena = this._evaluateBestArena(agent, availableArenas);
+                // Filter arenas by agent's preferredGameTypes
+                const pref = agent.strategyParams?.preferredGameTypes || 'both';
+                let filteredArenas = availableArenas;
+                if (pref === 'battle') {
+                    filteredArenas = availableArenas.filter(a => a.gameType !== 'rps');
+                } else if (pref === 'rps') {
+                    filteredArenas = availableArenas.filter(a => a.gameType === 'rps');
+                }
+                // 'both' → no filtering
+
+                const bestArena = this._evaluateBestArena(agent, filteredArenas);
                 if (bestArena) {
+                    console.log(`[JOIN] ${agent.name} → ${bestArena.name} (${bestArena.arenaId}, tier: ${bestArena.tier}, fee: ${bestArena.entryFee})`);
                     await this._joinArena(agent, bestArena);
+                } else {
+                    // Log why no arena was found (only periodically to avoid spam)
+                    if (Math.random() < 0.1) {
+                        console.log(`[AutonomousLoop] ${agent.name} — no suitable arena found (filtered: ${filteredArenas.length} arenas, pref: ${pref})`);
+                    }
                 }
             }
         } catch (error) {
@@ -213,10 +258,13 @@ class AgentAutonomousLoop extends EventEmitter {
                 name: agent.name,
                 owner: agent.ownerAddress || 'autonomous',
                 strategyCode: agent.strategyCode,
+                strategyParams: agent.strategyParams || {},
+                strategyDescription: agent.strategyDescription || '',
+                traits: agent.traits || [],
                 buffs: agent.buffs || { health: 0, armor: 0, attack: 0, speed: 0 },
             });
 
-            console.log(`[AutonomousLoop] ${agent.name} auto-joined ${arena.name || arena.arenaId} (lobby: ${result.lobbySize})`);
+            console.log(`[JOIN] ✅ ${agent.name} auto-joined ${arena.name || arena.arenaId} (lobby: ${result.lobbySize})`);
 
             this.emit('agentAutoJoined', {
                 agentId: agent.id,
@@ -238,11 +286,13 @@ class AgentAutonomousLoop extends EventEmitter {
                     state.matchCount = (state.matchCount || 0) + 1;
                     
                     // Determine win/loss
-                    const isWinner = data.winner?.id === agent.id;
+                    const isWinner = data.result?.winner?.id === agent.id;
                     agent.status = isWinner ? 'won' : 'lost';
                     agent._lastResult = isWinner
-                        ? `Kazandı! +${data.prizePool || 0} MON`
-                        : 'Kaybetti';
+                        ? `Won! +${data.result?.prizePool || 0} MON`
+                        : 'Lost';
+                    
+                    console.log(`[AutonomousLoop] ${agent.name} match completed: ${agent.status} (arena: ${arena.arenaId})`);
                     
                     // Decrement buff matches
                     if (agent.buffs && agent.buffs.matchesLeft > 0) {
@@ -269,13 +319,40 @@ class AgentAutonomousLoop extends EventEmitter {
                     setTimeout(() => {
                         if (agent.status === 'won' || agent.status === 'lost') {
                             agent.status = 'searching';
+                            console.log(`[AutonomousLoop] ${agent.name} → searching (cooldown complete)`);
                         }
                     }, this.config.MATCH_COOLDOWN_MS);
                     
                     this.arenaManager.removeListener('matchCompleted', onComplete);
+                    this.arenaManager.removeListener('matchError', onError);
                 }
             };
+
+            // Also listen for match errors so agents don't get stuck
+            const onError = (data) => {
+                if (data.arenaId === arena.arenaId) {
+                    state.inMatch = false;
+                    state.lastMatchTime = Date.now();
+                    agent.status = 'searching';
+                    console.log(`[AutonomousLoop] ${agent.name} match errored → searching (arena: ${arena.arenaId})`);
+                    this.arenaManager.removeListener('matchCompleted', onComplete);
+                    this.arenaManager.removeListener('matchError', onError);
+                }
+            };
+
             this.arenaManager.on('matchCompleted', onComplete);
+            this.arenaManager.on('matchError', onError);
+
+            // Safety timeout: if match doesn't complete in 5 min, release agent
+            setTimeout(() => {
+                if (state.inMatch && agent._currentArenaId === arena.arenaId) {
+                    console.warn(`[AutonomousLoop] ${agent.name} match timeout (5min) → releasing from ${arena.arenaId}`);
+                    state.inMatch = false;
+                    agent.status = 'searching';
+                    this.arenaManager.removeListener('matchCompleted', onComplete);
+                    this.arenaManager.removeListener('matchError', onError);
+                }
+            }, 5 * 60 * 1000);
 
         } catch (error) {
             // Failed to join (full, already in, etc.) - just release lock

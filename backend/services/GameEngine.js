@@ -3,6 +3,9 @@
  *
  * Manages match lifecycle, turn execution, combat resolution,
  * alliance mechanics, and prize distribution.
+ *
+ * Each agent makes REAL AI decisions via Claude API every turn.
+ * Fallback to strategies.js if Claude is unavailable or times out.
  */
 
 const crypto = require('crypto');
@@ -16,6 +19,7 @@ const DEFAULTS = {
   DEFENDED_DAMAGE: 10,
   HP_RECOVERY: 5,
   DECISION_TIMEOUT: 30000, // 30 seconds
+  AI_DECISION_TIMEOUT: 3000, // 3s for Claude API call
   MIN_AGENTS: 2,
   MAX_AGENTS: 16,
 };
@@ -39,6 +43,7 @@ class GameEngine extends EventEmitter {
     this.config = { ...DEFAULTS, ...config };
     this.matches = new Map();          // matchId → match
     this.pendingProposals = new Map();  // matchId → [proposal, …]
+    this.anthropicApiKey = config.anthropicApiKey || process.env.ANTHROPIC_API_KEY || null;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -67,11 +72,15 @@ class GameEngine extends EventEmitter {
 
       return {
         id: a.id || uid('agent_'),
+        name: a.name || 'Unknown',
         owner: a.owner || null,
         wallet: a.wallet || null,
         hp: this.config.STARTING_HP + hpBuff,
         alive: true,
         strategyCode: a.strategyCode || {},
+        strategyParams: a.strategyParams || {},
+        strategyDescription: a.strategyDescription || '',
+        traits: a.traits || [],
         lastAction: null,
         turnsAlive: 0,
         _buffs: buffs, // carry buffs through the match
@@ -154,7 +163,17 @@ class GameEngine extends EventEmitter {
       }
     }
 
-    // 3. Accept / Reject alliances
+    // 3. Process bribe offers
+    for (const [agentId, dec] of Object.entries(decisions)) {
+      if (dec && dec.action === 'bribe') {
+        const bribeResult = this._processBribe(match, agentId, dec);
+        if (bribeResult) {
+          turnRecord.events.push({ type: 'bribe', ...bribeResult });
+        }
+      }
+    }
+
+    // 4. Accept / Reject alliances
     for (const [agentId, dec] of Object.entries(decisions)) {
       if (dec && dec.action === 'accept_alliance') {
         const formed = this.handleAlliance(match, agentId, dec);
@@ -164,7 +183,7 @@ class GameEngine extends EventEmitter {
       }
     }
 
-    // 4. Apply attacks
+    // 5. Apply attacks
     for (const [agentId, dec] of Object.entries(decisions)) {
       if (dec && dec.action === 'attack') {
         const dmgResult = this.applyDamage(match.agents, agentId, dec.target, decisions);
@@ -174,7 +193,7 @@ class GameEngine extends EventEmitter {
       }
     }
 
-    // 5. Process betrayals
+    // 6. Process betrayals
     for (const [agentId, dec] of Object.entries(decisions)) {
       if (dec && dec.action === 'betray_alliance') {
         const betrayResult = this._processBetrayal(match, agentId, dec, decisions);
@@ -184,11 +203,11 @@ class GameEngine extends EventEmitter {
       }
     }
 
-    // 6. HP recovery
+    // 7. HP recovery
     this.applyRecovery(match.agents);
     turnRecord.events.push({ type: 'recovery', amount: this.config.HP_RECOVERY });
 
-    // 7. Mark dead agents
+    // 8. Mark dead agents
     for (const agent of match.agents) {
       if (agent.hp <= 0 && agent.alive) {
         agent.alive = false;
@@ -261,7 +280,7 @@ class GameEngine extends EventEmitter {
         agent.lastAction = decision;
       } catch {
         // Timeout or error → default to defend
-        decisions[agent.id] = { action: 'defend' };
+        decisions[agent.id] = { action: 'defend', reasoning: 'Fallback: decision timeout' };
         agent.lastAction = { action: 'defend' };
       }
     });
@@ -520,29 +539,59 @@ class GameEngine extends EventEmitter {
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Retrieve a single agent's decision with timeout.
+   * Retrieve a single agent's decision via Claude AI, with fallback.
    * @private
    */
   async _getAgentDecision(match, agent) {
     const gameState = this.buildGameState(match, agent);
 
+    // ── Try Claude AI decision first ────────────────────────────────────
+    if (this.anthropicApiKey) {
+      try {
+        const aiDecision = await this._getClaudeDecision(agent, gameState, match);
+        if (aiDecision && aiDecision.action) {
+          // Emit reasoning for spectate broadcast
+          this.emit('agentReasoning', {
+            matchId: match.matchId,
+            agentId: agent.id,
+            agentName: agent.name,
+            reasoning: aiDecision.reasoning || '',
+            action: aiDecision.action,
+            turn: match.currentTurn,
+          });
+          return aiDecision;
+        }
+      } catch (err) {
+        console.warn(`[AI] Claude decision failed for ${agent.name}: ${err.message} — using fallback`);
+      }
+    }
+
+    // ── Fallback to scripted strategy ───────────────────────────────────
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`Agent ${agent.id} decision timeout`));
       }, this.config.DECISION_TIMEOUT);
 
       try {
-        // If the agent has a `decide` function in its strategy, call it
         if (
           agent.strategyCode &&
           typeof agent.strategyCode.decide === 'function'
         ) {
           const result = agent.strategyCode.decide(gameState);
-          // Support both sync and async strategies
           if (result && typeof result.then === 'function') {
             result
               .then((decision) => {
                 clearTimeout(timer);
+                decision.reasoning = decision.reasoning || 'Scripted strategy fallback';
+                this.emit('agentReasoning', {
+                  matchId: match.matchId,
+                  agentId: agent.id,
+                  agentName: agent.name,
+                  reasoning: decision.reasoning,
+                  action: decision.action,
+                  turn: match.currentTurn,
+                  isFallback: true,
+                });
                 resolve(decision);
               })
               .catch((err) => {
@@ -551,18 +600,126 @@ class GameEngine extends EventEmitter {
               });
           } else {
             clearTimeout(timer);
-            resolve(result);
+            const decision = result || { action: 'defend' };
+            decision.reasoning = decision.reasoning || 'Scripted strategy fallback';
+            this.emit('agentReasoning', {
+              matchId: match.matchId,
+              agentId: agent.id,
+              agentName: agent.name,
+              reasoning: decision.reasoning,
+              action: decision.action,
+              turn: match.currentTurn,
+              isFallback: true,
+            });
+            resolve(decision);
           }
         } else {
-          // No strategy → default defend
           clearTimeout(timer);
-          resolve({ action: 'defend' });
+          resolve({ action: 'defend', reasoning: 'No strategy available' });
         }
       } catch (err) {
         clearTimeout(timer);
         reject(err);
       }
     });
+  }
+
+  /**
+   * Call Claude API for a real AI battle decision.
+   * 3s timeout, returns parsed JSON decision.
+   * @private
+   */
+  async _getClaudeDecision(agent, gameState, match) {
+    const params = agent.strategyParams || {};
+    const traits = (agent.traits || []).join(', ') || 'balanced';
+    const personality = agent.strategyDescription || traits;
+
+    const systemPrompt = `You are an autonomous AI gladiator agent in a battle arena on the Monad blockchain. You make genuine, independent combat decisions every turn.
+
+Your identity:
+- Name: ${agent.name}
+- Personality: ${personality}
+- Traits: ${traits}
+
+Your behavioral parameters (0-100 scale):
+- Aggressiveness: ${params.aggressiveness ?? 50} (0=always defend, 100=always attack)
+- Risk Tolerance: ${params.riskTolerance ?? 50} (willingness to take risks)
+- Alliance Tendency: ${params.allianceTendency ?? 50} (0=lone wolf, 100=always ally)
+- Betrayal Chance: ${params.betrayalChance ?? 20} (0=loyal, 100=always betray)
+- Bribery Policy: ${params.briberyPolicy || 'conditional'}
+
+Combat rules:
+- ATTACK deals ~20 damage (10 if target is defending)
+- DEFEND reduces incoming damage and recovers +5 HP
+- You can propose/accept alliances for shared prize pools
+- Betrayal deals full 20 damage ignoring defense, but breaks your alliance
+- Last gladiator standing wins the entire prize pool
+- HP starts at 100, max 105
+
+You must stay in character and make decisions consistent with your personality.
+Respond with ONLY a valid JSON object, no markdown, no explanation outside the JSON.`;
+
+    const opponents = gameState.opponents.filter(o => o.alive);
+    const allianceInfo = gameState.alliances.length > 0
+      ? `Active alliances: ${JSON.stringify(gameState.alliances)}`
+      : 'No active alliances';
+
+    const userPrompt = `Turn ${gameState.currentTurn}. Choose your action NOW.
+
+Your status: HP=${gameState.you.hp}/105, alive opponents: ${opponents.length}
+Opponents: ${opponents.map(o => `${o.id}(HP:${o.hp}, last:${o.lastAction?.action || 'none'})`).join(', ')}
+${allianceInfo}
+Prize pool: ${match.prizePool} MON
+Your last action: ${gameState.you.lastAction?.action || 'none'}
+
+Available actions:
+- {"action": "attack", "target": "<opponentId>", "reasoning": "..."}
+- {"action": "defend", "reasoning": "..."}
+- {"action": "propose_alliance", "target": "<opponentId>", "terms": {"prizeShare": 50}, "reasoning": "..."}
+- {"action": "accept_alliance", "proposer": "<agentId>", "reasoning": "..."}
+- {"action": "betray_alliance", "allianceId": "<id>", "attackTarget": "<agentId>", "reasoning": "..."}
+- {"action": "bribe", "target": "<opponentId>", "amount": <number>, "reasoning": "..."}
+
+Respond with a single JSON object.`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.AI_DECISION_TIMEOUT);
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': this.anthropicApiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 200,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+
+      const rawText = data.content?.[0]?.text || '';
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+
+      console.log(`[AI] ${agent.name} (turn ${match.currentTurn}): ${parsed.action}${parsed.target ? ' → ' + parsed.target : ''} | "${(parsed.reasoning || '').slice(0, 80)}"`);
+
+      return parsed;
+    } catch (err) {
+      clearTimeout(timeout);
+      throw err;
+    }
   }
 
   /**
@@ -580,7 +737,74 @@ class GameEngine extends EventEmitter {
   }
 
   /**
+   * Process a bribe action.
+   *
+   * Briber offers a portion of prize to a target. Target's briberyPolicy
+   * determines acceptance:
+   *   - "accept"      → always accept → auto-form alliance
+   *   - "reject"      → always reject
+   *   - "conditional"  → accept if HP < 50% or briber has more HP
+   *
+   * @private
+   */
+  _processBribe(match, agentId, decision) {
+    const target = match.agents.find(a => a.id === decision.target && a.alive);
+    if (!target) return null;
+
+    const briber = match.agents.find(a => a.id === agentId);
+    if (!briber) return null;
+
+    const offerAmount = decision.amount || Math.floor(match.prizePool * 0.1); // default 10% of pool
+    const targetPolicy = target.strategyCode?.params?.briberyPolicy || 'conditional';
+
+    let accepted = false;
+    if (targetPolicy === 'accept') {
+      accepted = true;
+    } else if (targetPolicy === 'reject') {
+      accepted = false;
+    } else {
+      // conditional: accept if target HP < 50% or briber has more HP
+      accepted = target.hp < (this.config.STARTING_HP * 0.5) || briber.hp > target.hp;
+    }
+
+    if (accepted) {
+      // Form an alliance as result of the bribe
+      const alliance = {
+        id: uid('bribe_alliance_'),
+        members: [agentId, target.id],
+        prizeShare: {
+          [agentId]: decision.terms?.prizeShare || 60,
+          [target.id]: 100 - (decision.terms?.prizeShare || 60),
+        },
+        bribedAlliance: true,
+      };
+      match.activeAlliances.push(alliance);
+      this.emit('allianceFormed', { matchId: match.matchId, alliance, viaBribe: true });
+    }
+
+    this.emit('bribeAttempt', {
+      matchId: match.matchId,
+      briber: agentId,
+      target: target.id,
+      amount: offerAmount,
+      accepted,
+    });
+
+    return {
+      briber: agentId,
+      target: target.id,
+      amount: offerAmount,
+      accepted,
+      targetPolicy,
+    };
+  }
+
+  /**
    * Process a betrayal action.
+   *
+   * Betrayal now also emits an ELO penalty event so the leaderboard
+   * can directly penalise betrayers (not just via match loss).
+   *
    * @private
    */
   _processBetrayal(match, agentId, decision, decisions) {
@@ -642,7 +866,293 @@ class GameEngine extends EventEmitter {
       totalAgents: match.agents.length,
       prizePool: match.prizePool,
       alliances: match.activeAlliances.length,
+      gameType: match.gameType || 'battle',
     };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  RPS (Rock-Paper-Scissors) Game Mode
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Start a best-of-3 RPS match between exactly 2 agents.
+   */
+  async startRpsMatch(arena, agents) {
+    if (!agents || agents.length !== 2) {
+      throw new Error('RPS requires exactly 2 agents');
+    }
+
+    const matchAgents = agents.map((a) => ({
+      id: a.id || uid('agent_'),
+      owner: a.owner || null,
+      wallet: a.wallet || null,
+      strategyCode: a.strategyCode || {},
+      strategyParams: a.strategyParams || {},
+      traits: a.traits || [],
+      roundsWon: 0,
+      lastMove: null,
+      moveHistory: [],
+    }));
+
+    const match = {
+      matchId: uid('rps_'),
+      arenaId: arena.arenaId || uid('arena_'),
+      gameType: 'rps',
+      agents: matchAgents,
+      prizePool: arena.prizePool || 0,
+      currentRound: 1,
+      bestOf: 3,
+      status: 'active',
+      history: [],
+      createdAt: new Date(),
+      endedAt: null,
+    };
+
+    this.matches.set(match.matchId, match);
+    this.emit('matchStarted', { matchId: match.matchId, agentCount: 2, gameType: 'rps' });
+    return match;
+  }
+
+  /**
+   * Execute one round of RPS.
+   * Each agent picks rock/paper/scissors via Claude AI (with strategy fallback).
+   */
+  async executeRpsRound(match) {
+    if (match.status !== 'active') {
+      throw new Error(`RPS match ${match.matchId} is not active`);
+    }
+
+    const [a, b] = match.agents;
+    const moveA = await this._getRpsMoveAI(a, b, match);
+    const moveB = await this._getRpsMoveAI(b, a, match);
+
+    a.lastMove = moveA;
+    b.lastMove = moveB;
+    a.moveHistory.push(moveA);
+    b.moveHistory.push(moveB);
+
+    const winner = this._resolveRps(moveA, moveB);
+    let roundWinner = null;
+
+    if (winner === 1) {
+      a.roundsWon++;
+      roundWinner = a;
+    } else if (winner === 2) {
+      b.roundsWon++;
+      roundWinner = b;
+    }
+
+    const roundRecord = {
+      round: match.currentRound,
+      moves: { [a.id]: moveA, [b.id]: moveB },
+      winner: roundWinner?.id || null,
+      isDraw: winner === 0,
+      scores: { [a.id]: a.roundsWon, [b.id]: b.roundsWon },
+      events: [{
+        type: 'rps_round',
+        round: match.currentRound,
+        moveA: { agentId: a.id, move: moveA },
+        moveB: { agentId: b.id, move: moveB },
+        winner: roundWinner?.id || 'draw',
+      }],
+    };
+
+    match.history.push(roundRecord);
+
+    this.emit('rpsRound', {
+      matchId: match.matchId,
+      round: match.currentRound,
+      moves: { [a.id]: moveA, [b.id]: moveB },
+      winner: roundWinner?.id || null,
+    });
+
+    // Check best-of-3 end condition
+    const winsNeeded = Math.ceil(match.bestOf / 2);
+    if (a.roundsWon >= winsNeeded || b.roundsWon >= winsNeeded) {
+      match.status = 'completed';
+      match.endedAt = new Date();
+
+      const matchWinner = a.roundsWon >= winsNeeded ? a : b;
+      const matchLoser = matchWinner === a ? b : a;
+
+      // Use same prize distribution as battle mode
+      const prizeResult = this.distributePrize(match, matchWinner);
+
+      roundRecord.events.push({
+        type: 'rps_match_end',
+        winner: matchWinner.id,
+        loser: matchLoser.id,
+        finalScore: { [a.id]: a.roundsWon, [b.id]: b.roundsWon },
+        prize: prizeResult,
+      });
+
+      this.emit('matchEnded', {
+        matchId: match.matchId,
+        winner: matchWinner,
+        loser: matchLoser,
+        gameType: 'rps',
+        turn: match.currentRound,
+      });
+    } else {
+      match.currentRound++;
+    }
+
+    return roundRecord;
+  }
+
+  /**
+   * Get RPS move via Claude AI, with fallback to weight-based strategy.
+   * @private
+   */
+  async _getRpsMoveAI(agent, opponent, match) {
+    if (this.anthropicApiKey) {
+      try {
+        const params = agent.strategyParams || {};
+        const traits = (agent.traits || []).join(', ') || 'balanced';
+        const personality = agent.strategyDescription || traits;
+
+        const systemPrompt = `You are an AI gladiator agent playing Rock-Paper-Scissors in a battle arena.
+Your name: ${agent.name}
+Personality: ${personality}
+Traits: ${traits}
+Aggressiveness: ${params.aggressiveness ?? 50}/100
+
+You must choose rock, paper, or scissors strategically.
+Respond with ONLY a valid JSON object, no markdown.`;
+
+        const opponentHistory = opponent.moveHistory.length > 0
+          ? `Opponent's previous moves: ${opponent.moveHistory.join(', ')}`
+          : 'No opponent history yet (first round)';
+
+        const userPrompt = `Round ${match.currentRound}/${match.bestOf}. Score: You ${agent.roundsWon} - ${opponent.roundsWon} Opponent.
+${opponentHistory}
+Your previous moves: ${agent.moveHistory.length > 0 ? agent.moveHistory.join(', ') : 'none'}
+
+Choose ONE: rock, paper, or scissors.
+Respond: {"move": "rock|paper|scissors", "reasoning": "brief explanation"}`;
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.config.AI_DECISION_TIMEOUT);
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': this.anthropicApiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 100,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message);
+
+        const rawText = data.content?.[0]?.text || '';
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+
+        const validMoves = ['rock', 'paper', 'scissors'];
+        if (parsed.move && validMoves.includes(parsed.move.toLowerCase())) {
+          const move = parsed.move.toLowerCase();
+          console.log(`[AI-RPS] ${agent.name} (round ${match.currentRound}): ${move} | "${(parsed.reasoning || '').slice(0, 60)}"`);
+
+          this.emit('agentReasoning', {
+            matchId: match.matchId,
+            agentId: agent.id,
+            agentName: agent.name,
+            reasoning: parsed.reasoning || '',
+            action: `rps:${move}`,
+            turn: match.currentRound,
+            gameType: 'rps',
+          });
+
+          return move;
+        }
+      } catch (err) {
+        console.warn(`[AI-RPS] Claude failed for ${agent.name}: ${err.message} — using fallback`);
+      }
+    }
+
+    // Fallback to weight-based strategy
+    return this._getRpsMove(agent, opponent);
+  }
+
+  /**
+   * Determine RPS move for an agent based on strategy profile (FALLBACK).
+   *
+   * Archetypes:
+   * - Berserker/aggressive (aggressiveness > 65) → rock-heavy (60/25/15)
+   * - Diplomat (allianceTendency > 65)            → paper-heavy (20/55/25)
+   * - Trickster (betrayalChance > 50)             → uniform random
+   * - Default                                     → slight rock bias (40/35/25)
+   *
+   * Counter mechanic: if aggressiveness > 50, there's a chance to counter
+   * the opponent's last move.
+   */
+  _getRpsMove(agent, opponent) {
+    const params = agent.strategyParams || {};
+    const aggressiveness = (params.aggressiveness ?? 50) / 100;
+    const allianceTendency = (params.allianceTendency ?? 50) / 100;
+    const betrayalChance = (params.betrayalChance ?? 20) / 100;
+    const moves = ['rock', 'paper', 'scissors'];
+
+    // Counter mechanic: chance to counter opponent's last move
+    if (opponent.lastMove && Math.random() < aggressiveness * 0.4) {
+      const counterMap = { rock: 'paper', paper: 'scissors', scissors: 'rock' };
+      return counterMap[opponent.lastMove];
+    }
+
+    // Weight-based selection
+    let weights;
+    if (aggressiveness > 0.65) {
+      // Berserker: rock-heavy
+      weights = [60, 25, 15];
+    } else if (allianceTendency > 0.65) {
+      // Diplomat: paper-heavy
+      weights = [20, 55, 25];
+    } else if (betrayalChance > 0.50) {
+      // Trickster: uniform
+      weights = [34, 33, 33];
+    } else {
+      // Default: slight rock bias
+      weights = [40, 35, 25];
+    }
+
+    // Trait-based adjustments
+    const traits = (agent.traits || []).map(t => t.toLowerCase());
+    if (traits.includes('aggressive') || traits.includes('berserker')) {
+      weights[0] += 10; // more rock
+    }
+    if (traits.includes('diplomat') || traits.includes('loyal')) {
+      weights[1] += 10; // more paper
+    }
+    if (traits.includes('ambusher') || traits.includes('schemer') || traits.includes('trickster')) {
+      weights[2] += 10; // more scissors
+    }
+
+    const total = weights.reduce((s, w) => s + w, 0);
+    let roll = Math.random() * total;
+    for (let i = 0; i < moves.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) return moves[i];
+    }
+    return moves[2]; // fallback
+  }
+
+  /**
+   * Resolve RPS: returns 1 if player 1 wins, 2 if player 2 wins, 0 for draw.
+   */
+  _resolveRps(moveA, moveB) {
+    if (moveA === moveB) return 0;
+    const wins = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
+    return wins[moveA] === moveB ? 1 : 2;
   }
 }
 

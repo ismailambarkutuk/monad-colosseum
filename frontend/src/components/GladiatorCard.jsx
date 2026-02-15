@@ -22,8 +22,8 @@ export default function GladiatorCard({ tokenId, metadata = {}, onClick }) {
         <div
             onClick={onClick}
             style={{
-                background: 'var(--bg-secondary, #13132a)',
-                border: '1px solid var(--border-color, #2a2a4a)',
+                background: 'var(--bg-secondary, #18181b)',
+                border: '1px solid var(--border-color, #27272a)',
                 borderTop: `4px solid ${tierStyle.bg}`,
                 borderRadius: '14px',
                 padding: '1.5rem',
@@ -99,7 +99,7 @@ export default function GladiatorCard({ tokenId, metadata = {}, onClick }) {
             {/* Strategy */}
             {strategy && (
                 <div style={{
-                    background: 'var(--bg-tertiary, #1a1a3a)',
+                    background: 'var(--bg-tertiary, #1f1f24)',
                     borderRadius: '8px',
                     padding: '0.5rem 0.75rem',
                     marginBottom: '1rem',
@@ -109,7 +109,7 @@ export default function GladiatorCard({ tokenId, metadata = {}, onClick }) {
                 }}>
                     <span style={{ fontSize: '0.85rem' }}>🧠</span>
                     <span style={{
-                        color: 'var(--accent-primary, #818cf8)',
+                        color: 'var(--accent-primary, #3b82f6)',
                         fontSize: '0.8rem',
                         fontWeight: 600,
                         whiteSpace: 'nowrap',
@@ -141,7 +141,7 @@ export default function GladiatorCard({ tokenId, metadata = {}, onClick }) {
                     margin: 0,
                     textAlign: 'right',
                 }}>
-                    {new Date(createdAt).toLocaleDateString('tr-TR')}
+                    {new Date(createdAt).toLocaleDateString('en-US')}
                 </p>
             )}
         </div>
@@ -152,8 +152,8 @@ export default function GladiatorCard({ tokenId, metadata = {}, onClick }) {
 function StatBox({ icon, label, value, color }) {
     return (
         <div style={{
-            background: 'var(--bg-tertiary, #1a1a3a)',
-            borderRadius: '8px',
+            background: 'var(--bg-tertiary, #1f1f24)',
+            borderRadius: 'var(--border-radius-sm, 6px)',
             padding: '0.5rem',
             textAlign: 'center',
         }}>
