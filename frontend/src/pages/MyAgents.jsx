@@ -8,7 +8,7 @@ import { parseEther, formatEther } from 'viem'
 import { WalletButton } from '../components/WalletButton'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
-const WS_URL = (BACKEND_URL.replace('http', 'ws')) + '/ws'
+const WS_URL = import.meta.env.VITE_WS_URL || (BACKEND_URL.replace('http', 'ws') + '/ws')
 
 const BUFF_TYPES = [
     { id: 'health', label: '❤️ HP', desc: '+HP starting health', color: '#22c55e' },
@@ -90,7 +90,7 @@ export default function MyAgents({ onNavigate }) {
                             fetch(`${BACKEND_URL}/api/agent/${msg.agentId}/transfers`)
                                 .then(r => r.json())
                                 .then(d => { if (d.ok) { setTransfers(d.transfers); setFinancial(d.financial) } })
-                                .catch(() => {})
+                                .catch(() => { })
                         }
                     }
                     if (msg.type === 'agent:withdraw') {
@@ -99,7 +99,7 @@ export default function MyAgents({ onNavigate }) {
                 } catch { /* ignore */ }
             }
             ws.onopen = () => console.log('[WS] MyAgents connected')
-            ws.onerror = () => {}
+            ws.onerror = () => { }
         } catch { /* WS not available */ }
         return () => { if (ws) ws.close() }
     }, [isConnected, selectedAgent, addToast])
@@ -116,7 +116,7 @@ export default function MyAgents({ onNavigate }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount: parseFloat(sendAmount), txHash: sendTxHash }),
-            }).catch(() => {})
+            }).catch(() => { })
         }
     }, [isSendConfirmed, sendTxHash, sendAgent, sendTxDone, sendAmount])
 
@@ -204,7 +204,7 @@ export default function MyAgents({ onNavigate }) {
         fetch(`${BACKEND_URL}/api/agent/${selectedAgent}/transfers`)
             .then(r => r.json())
             .then(d => { if (d.ok) { setTransfers(d.transfers); setFinancial(d.financial) } })
-            .catch(() => {})
+            .catch(() => { })
         // init settings values
         const ag = agents.find(a => a.id === selectedAgent)
         if (ag) {
@@ -284,7 +284,7 @@ export default function MyAgents({ onNavigate }) {
                     fetch(`${BACKEND_URL}/api/agent/${withdrawAgent.id}/transfers`)
                         .then(r => r.json())
                         .then(d => { if (d.ok) { setTransfers(d.transfers); setFinancial(d.financial) } })
-                        .catch(() => {})
+                        .catch(() => { })
                 }
                 if (data.wasActive) {
                     addToast('⚠️ Withdrawal while agent is active — balance may run low!', 'warning')
@@ -431,7 +431,7 @@ export default function MyAgents({ onNavigate }) {
                             borderLeft: `4px solid ${status.color}`,
                             cursor: 'pointer',
                         }}
-                        onClick={() => setSelectedAgent(selectedAgent === agent.id ? null : agent.id)}
+                            onClick={() => setSelectedAgent(selectedAgent === agent.id ? null : agent.id)}
                         >
                             {/* Header */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
